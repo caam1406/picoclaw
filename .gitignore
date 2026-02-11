@@ -1,0 +1,26 @@
+# Binaries
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/picoclaw
+/picoclaw-test
+
+# Picoclaw specific
+.picoclaw/
+config.json
+sessions/
+build/
+
+# Coverage
+coverage.txt
+coverage.html
+
+# OS
+.DS_Store
+
+# Ralph workspace
+ralph/
