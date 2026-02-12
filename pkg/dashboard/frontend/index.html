@@ -48,6 +48,10 @@
       <div class="sidebar-label">Monitoramento</div>
       <div class="sidebar-item" onclick="showView('live')">Mensagens Live</div>
     </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Sistema</div>
+      <div class="sidebar-item" onclick="showView('settings')">Configurações</div>
+    </div>
   </div>
 
   <!-- Main Content Area -->
@@ -109,6 +113,46 @@
         <div class="card-title">Mensagens em Tempo Real</div>
         <div class="messages-stream" id="live-messages">
           <div style="color:var(--text-muted);padding:20px;text-align:center">Aguardando mensagens...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings View -->
+    <div id="view-settings" class="view">
+      <div class="card">
+        <div class="card-title">Configuracao de Armazenamento</div>
+        <div class="form-group">
+          <label>Tipo de Storage</label>
+          <select id="storage-type">
+            <option value="file">Arquivos JSON (file)</option>
+            <option value="postgres">PostgreSQL (postgres)</option>
+            <option value="sqlite">SQLite (sqlite) - Em breve</option>
+          </select>
+        </div>
+        <div class="form-group" id="storage-url-group">
+          <label>Database URL</label>
+          <input type="text" id="storage-url" placeholder="postgres://user:password@localhost:5432/picoclaw?sslmode=disable">
+          <div class="form-hint">Formato: postgres://usuario:senha@host:porta/database?sslmode=disable</div>
+        </div>
+        <div class="form-group" id="storage-filepath-group">
+          <label>Caminho do Workspace</label>
+          <input type="text" id="storage-filepath" placeholder="~/.picoclaw/workspace">
+          <div class="form-hint">Diretorio onde os arquivos JSON serao armazenados</div>
+        </div>
+        <div class="form-group" id="storage-ssl-group" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="storage-ssl-enabled" style="width:auto">
+            <span>Habilitar SSL/TLS</span>
+          </label>
+          <div class="form-hint">Desabilite se o servidor PostgreSQL não tiver SSL configurado</div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="testStorageConnection()">Testar Conexao</button>
+          <button class="btn btn-success" onclick="saveStorageConfig()">Salvar Configuracao</button>
+        </div>
+        <div id="storage-test-result" class="storage-result"></div>
+        <div class="warning-box">
+          <strong>⚠️ Importante:</strong> Alterações na configuração de storage requerem <strong>reinicialização do PicoClaw</strong> para entrarem em efeito.
         </div>
       </div>
     </div>

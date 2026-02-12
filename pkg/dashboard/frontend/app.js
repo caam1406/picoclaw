@@ -217,6 +217,7 @@ function showView(name) {
   if (view) view.classList.add('active');
 
   if (name === 'overview') loadOverview();
+  if (name === 'settings') loadStorageConfig();
 }
 
 // ─── Contact CRUD ───────────────────────────────────────────────────
@@ -345,6 +346,120 @@ function escapeAttr(str) {
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
+
+// ─── Storage Configuration ──────────────────────────────────────────
+function loadStorageConfig() {
+  apiFetch('/api/v1/config/storage').then(data => {
+    document.getElementById('storage-type').value = data.type || 'file';
+    document.getElementById('storage-url').value = data.database_url || '';
+    document.getElementById('storage-filepath').value = data.file_path || '~/.picoclaw/workspace';
+    document.getElementById('storage-ssl-enabled').checked = data.ssl_enabled || false;
+    toggleStorageFields();
+  }).catch(() => {
+    toast('Erro ao carregar configuracao de storage', true);
+  });
+}
+
+function toggleStorageFields() {
+  const type = document.getElementById('storage-type').value;
+  const urlGroup = document.getElementById('storage-url-group');
+  const fileGroup = document.getElementById('storage-filepath-group');
+  const sslGroup = document.getElementById('storage-ssl-group');
+
+  if (type === 'file') {
+    urlGroup.style.display = 'none';
+    fileGroup.style.display = 'block';
+    sslGroup.style.display = 'none';
+  } else if (type === 'postgres' || type === 'sqlite') {
+    urlGroup.style.display = 'block';
+    fileGroup.style.display = 'none';
+    sslGroup.style.display = 'block';
+  }
+}
+
+function testStorageConnection() {
+  const type = document.getElementById('storage-type').value;
+  const url = document.getElementById('storage-url').value.trim();
+  const filePath = document.getElementById('storage-filepath').value.trim();
+  const sslEnabled = document.getElementById('storage-ssl-enabled').checked;
+
+  const resultDiv = document.getElementById('storage-test-result');
+  resultDiv.className = 'storage-result';
+  resultDiv.textContent = 'Testando conexão...';
+  resultDiv.classList.add('show');
+
+  apiFetch('/api/v1/config/storage/test', {
+    method: 'POST',
+    body: JSON.stringify({
+      type: type,
+      database_url: url,
+      file_path: filePath,
+      ssl_enabled: sslEnabled
+    })
+  }).then(data => {
+    if (data.success) {
+      resultDiv.className = 'storage-result success show';
+      resultDiv.textContent = '✓ Conexão bem-sucedida! Storage está acessível.';
+    } else {
+      resultDiv.className = 'storage-result error show';
+      resultDiv.textContent = '✗ Erro: ' + (data.error || 'Falha ao conectar');
+    }
+  }).catch(err => {
+    resultDiv.className = 'storage-result error show';
+    resultDiv.textContent = '✗ Erro ao testar conexão: ' + err.message;
+  });
+}
+
+function saveStorageConfig() {
+  const type = document.getElementById('storage-type').value;
+  const url = document.getElementById('storage-url').value.trim();
+  const filePath = document.getElementById('storage-filepath').value.trim();
+  const sslEnabled = document.getElementById('storage-ssl-enabled').checked;
+
+  if (type === 'sqlite') {
+    toast('SQLite ainda não está implementado', true);
+    return;
+  }
+
+  if (type === 'postgres' && !url) {
+    toast('Database URL é obrigatória para PostgreSQL', true);
+    return;
+  }
+
+  if (type === 'file' && !filePath) {
+    toast('Caminho do workspace é obrigatório para file-based storage', true);
+    return;
+  }
+
+  apiFetch('/api/v1/config/storage/update', {
+    method: 'PUT',
+    body: JSON.stringify({
+      type: type,
+      database_url: url,
+      file_path: filePath,
+      ssl_enabled: sslEnabled
+    })
+  }).then(data => {
+    if (data.success) {
+      toast('Configuração salva! Reinicie o PicoClaw para aplicar.');
+      const resultDiv = document.getElementById('storage-test-result');
+      resultDiv.className = 'storage-result success show';
+      resultDiv.innerHTML = '<strong>✓ Configuração salva com sucesso!</strong><br>Por favor, reinicie o PicoClaw para que as alterações entrem em efeito.';
+    } else {
+      toast('Erro ao salvar configuração', true);
+    }
+  }).catch(err => {
+    toast('Erro ao salvar: ' + err.message, true);
+  });
+}
+
+// Listen to storage type changes
+document.addEventListener('DOMContentLoaded', () => {
+  const storageTypeSelect = document.getElementById('storage-type');
+  if (storageTypeSelect) {
+    storageTypeSelect.addEventListener('change', toggleStorageFields);
+  }
+});
 
 // Handle Enter key on login
 document.addEventListener('keydown', (e) => {

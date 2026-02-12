@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/contacts"
+	"github.com/sipeed/picoclaw/pkg/storage"
 )
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -178,4 +179,146 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+// handleGetStorageConfig returns the current storage configuration (with password masked)
+func (s *Server) handleGetStorageConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := s.cfg.Storage
+	// Mask password in URL for security
+	maskedURL := maskDatabaseURL(cfg.DatabaseURL)
+
+	writeJSON(w, map[string]interface{}{
+		"type":         cfg.Type,
+		"database_url": maskedURL,
+		"file_path":    cfg.FilePath,
+		"ssl_enabled":  cfg.SSLEnabled,
+	})
+}
+
+// handleUpdateStorageConfig updates the storage configuration
+func (s *Server) handleUpdateStorageConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Type        string `json:"type"`
+		DatabaseURL string `json:"database_url"`
+		FilePath    string `json:"file_path"`
+		SSLEnabled  bool   `json:"ssl_enabled"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Validate storage type
+	if body.Type != "file" && body.Type != "postgres" && body.Type != "sqlite" {
+		http.Error(w, `{"error":"invalid storage type (must be: file, postgres, or sqlite)"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Update config
+	s.cfg.Storage.Type = body.Type
+	s.cfg.Storage.DatabaseURL = body.DatabaseURL
+	s.cfg.Storage.FilePath = body.FilePath
+	s.cfg.Storage.SSLEnabled = body.SSLEnabled
+
+	// Save config to disk
+	if err := s.cfg.Save(); err != nil {
+		http.Error(w, `{"error":"failed to save config: `+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]string{
+		"status":  "updated",
+		"message": "Storage configuration updated. Restart required for changes to take effect.",
+	})
+}
+
+// handleTestStorageConnection tests the database connection
+func (s *Server) handleTestStorageConnection(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Type        string `json:"type"`
+		DatabaseURL string `json:"database_url"`
+		FilePath    string `json:"file_path"`
+		SSLEnabled  bool   `json:"ssl_enabled"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Create temporary storage config for test
+	testConfig := storage.Config{
+		Type:         body.Type,
+		DatabaseURL:  body.DatabaseURL,
+		FilePath:     body.FilePath,
+		SSLEnabled:   body.SSLEnabled,
+		MaxIdleConns: 5,
+		MaxOpenConns: 10,
+		MaxLifetime:  30 * time.Minute,
+	}
+
+	// Create temporary storage for test
+	testStore, err := storage.NewStorage(testConfig)
+	if err != nil {
+		writeJSON(w, map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := testStore.Connect(ctx); err != nil {
+		writeJSON(w, map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		testStore.Close()
+		return
+	}
+
+	testStore.Close()
+
+	writeJSON(w, map[string]interface{}{
+		"success": true,
+		"message": "Connection successful",
+	})
+}
+
+// maskDatabaseURL masks the password in a database URL
+func maskDatabaseURL(url string) string {
+	if url == "" {
+		return ""
+	}
+
+	// postgres://user:PASSWORD@host:port/db -> postgres://user:***@host:port/db
+	if strings.HasPrefix(url, "postgres://") {
+		parts := strings.SplitN(url, "@", 2)
+		if len(parts) == 2 {
+			userPass := strings.SplitN(parts[0], ":", 3)
+			if len(userPass) == 3 {
+				return userPass[0] + ":" + userPass[1] + ":***@" + parts[1]
+			}
+		}
+	}
+
+	return url
 }

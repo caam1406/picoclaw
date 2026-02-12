@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -16,7 +17,9 @@ type Config struct {
 	Gateway   GatewayConfig   `json:"gateway"`
 	Tools     ToolsConfig     `json:"tools"`
 	Dashboard DashboardConfig `json:"dashboard"`
+	Storage   StorageConfig   `json:"storage"`
 	mu        sync.RWMutex
+	filePath  string // Store path for Save() method
 }
 
 type DashboardConfig struct {
@@ -132,6 +135,13 @@ type ToolsConfig struct {
 	Web WebToolsConfig `json:"web"`
 }
 
+type StorageConfig struct {
+	Type        string `json:"type" env:"PICOCLAW_STORAGE_TYPE"`
+	DatabaseURL string `json:"database_url" env:"PICOCLAW_STORAGE_DATABASE_URL"`
+	FilePath    string `json:"file_path" env:"PICOCLAW_STORAGE_FILE_PATH"`
+	SSLEnabled  bool   `json:"ssl_enabled" env:"PICOCLAW_STORAGE_SSL_ENABLED"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Agents: AgentsConfig{
@@ -215,11 +225,18 @@ func DefaultConfig() *Config {
 			Token:        "",
 			ContactsOnly: false,
 		},
+		Storage: StorageConfig{
+			Type:        "file",
+			DatabaseURL: "",
+			FilePath:    "~/.picoclaw/workspace/sessions",
+			SSLEnabled:  false,
+		},
 	}
 }
 
 func LoadConfig(path string) (*Config, error) {
 	cfg := DefaultConfig()
+	cfg.filePath = path // Store path for later Save() calls
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -255,6 +272,14 @@ func SaveConfig(path string, cfg *Config) error {
 	}
 
 	return os.WriteFile(path, data, 0644)
+}
+
+// Save saves the configuration to the file it was loaded from.
+func (c *Config) Save() error {
+	if c.filePath == "" {
+		return fmt.Errorf("config file path not set")
+	}
+	return SaveConfig(c.filePath, c)
 }
 
 func (c *Config) WorkspacePath() string {
