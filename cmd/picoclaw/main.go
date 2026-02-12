@@ -648,7 +648,7 @@ func gatewayCmd() {
 	var dashboardServer *dashboard.Server
 	if cfg.Dashboard.Enabled && cfg.Dashboard.Token != "" {
 		contactsStore := contacts.NewStore(cfg.WorkspacePath())
-		agentLoop.SetContactsStore(contactsStore)
+		agentLoop.SetContactsStore(contactsStore, cfg.Dashboard.ContactsOnly)
 
 		dashboardServer = dashboard.NewServer(
 			cfg.Dashboard,

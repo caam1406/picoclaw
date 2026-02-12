@@ -121,6 +121,44 @@ func (s *Store) GetForSession(sessionKey string) string {
 	return ""
 }
 
+// IsRegistered checks if a contact exists in the store by session key.
+// Uses the same lookup logic as GetForSession (exact match + JID strip).
+func (s *Store) IsRegistered(sessionKey string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Try exact match
+	if _, ok := s.instructions[sessionKey]; ok {
+		return true
+	}
+
+	// Parse channel and chatID
+	idx := strings.Index(sessionKey, ":")
+	if idx <= 0 {
+		return false
+	}
+	chatID := sessionKey[idx+1:]
+	channel := sessionKey[:idx]
+
+	// Try without JID suffix
+	if atIdx := strings.Index(chatID, "@"); atIdx > 0 {
+		stripped := chatID[:atIdx]
+		key := makeKey(channel, stripped)
+		if _, ok := s.instructions[key]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Count returns the number of registered contacts.
+func (s *Store) Count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.instructions)
+}
+
 func (s *Store) load() {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {

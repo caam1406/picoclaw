@@ -20,10 +20,11 @@ type Config struct {
 }
 
 type DashboardConfig struct {
-	Enabled bool   `json:"enabled" env:"PICOCLAW_DASHBOARD_ENABLED"`
-	Host    string `json:"host" env:"PICOCLAW_DASHBOARD_HOST"`
-	Port    int    `json:"port" env:"PICOCLAW_DASHBOARD_PORT"`
-	Token   string `json:"token" env:"PICOCLAW_DASHBOARD_TOKEN"`
+	Enabled      bool   `json:"enabled" env:"PICOCLAW_DASHBOARD_ENABLED"`
+	Host         string `json:"host" env:"PICOCLAW_DASHBOARD_HOST"`
+	Port         int    `json:"port" env:"PICOCLAW_DASHBOARD_PORT"`
+	Token        string `json:"token" env:"PICOCLAW_DASHBOARD_TOKEN"`
+	ContactsOnly bool   `json:"contacts_only" env:"PICOCLAW_DASHBOARD_CONTACTS_ONLY"`
 }
 
 type AgentsConfig struct {
@@ -208,10 +209,11 @@ func DefaultConfig() *Config {
 			},
 		},
 		Dashboard: DashboardConfig{
-			Enabled: false,
-			Host:    "127.0.0.1",
-			Port:    18791,
-			Token:   "",
+			Enabled:      false,
+			Host:         "127.0.0.1",
+			Port:         18791,
+			Token:        "",
+			ContactsOnly: false,
 		},
 	}
 }
