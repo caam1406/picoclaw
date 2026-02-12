@@ -94,6 +94,7 @@ type ProvidersConfig struct {
 	OpenRouter ProviderConfig `json:"openrouter"`
 	Groq       ProviderConfig `json:"groq"`
 	Zhipu      ProviderConfig `json:"zhipu"`
+	ZAI        ProviderConfig `json:"zai"`
 	VLLM       ProviderConfig `json:"vllm"`
 	Gemini     ProviderConfig `json:"gemini"`
 }
@@ -181,6 +182,7 @@ func DefaultConfig() *Config {
 			OpenRouter: ProviderConfig{},
 			Groq:       ProviderConfig{},
 			Zhipu:      ProviderConfig{},
+			ZAI:        ProviderConfig{},
 			VLLM:       ProviderConfig{},
 			Gemini:     ProviderConfig{},
 		},
@@ -262,6 +264,9 @@ func (c *Config) GetAPIKey() string {
 	if c.Providers.Zhipu.APIKey != "" {
 		return c.Providers.Zhipu.APIKey
 	}
+	if c.Providers.ZAI.APIKey != "" {
+		return c.Providers.ZAI.APIKey
+	}
 	if c.Providers.Groq.APIKey != "" {
 		return c.Providers.Groq.APIKey
 	}
@@ -282,6 +287,12 @@ func (c *Config) GetAPIBase() string {
 	}
 	if c.Providers.Zhipu.APIKey != "" {
 		return c.Providers.Zhipu.APIBase
+	}
+	if c.Providers.ZAI.APIKey != "" {
+		if c.Providers.ZAI.APIBase != "" {
+			return c.Providers.ZAI.APIBase
+		}
+		return "https://api.z.ai/api/paas/v4"
 	}
 	if c.Providers.VLLM.APIKey != "" && c.Providers.VLLM.APIBase != "" {
 		return c.Providers.VLLM.APIBase
