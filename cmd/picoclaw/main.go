@@ -22,7 +22,9 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/cron"
+	"github.com/sipeed/picoclaw/pkg/dashboard"
 	"github.com/sipeed/picoclaw/pkg/heartbeat"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -642,12 +644,36 @@ func gatewayCmd() {
 
 	go agentLoop.Run(ctx)
 
+	// Start dashboard if enabled
+	var dashboardServer *dashboard.Server
+	if cfg.Dashboard.Enabled && cfg.Dashboard.Token != "" {
+		contactsStore := contacts.NewStore(cfg.WorkspacePath())
+		agentLoop.SetContactsStore(contactsStore)
+
+		dashboardServer = dashboard.NewServer(
+			cfg.Dashboard,
+			channelManager,
+			agentLoop.GetSessionManager(),
+			contactsStore,
+			msgBus,
+		)
+
+		if err := dashboardServer.Start(ctx); err != nil {
+			fmt.Printf("Error starting dashboard: %v\n", err)
+		} else {
+			fmt.Printf("✓ Dashboard started on http://%s:%d\n", cfg.Dashboard.Host, cfg.Dashboard.Port)
+		}
+	}
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
 	<-sigChan
 
 	fmt.Println("\nShutting down...")
 	cancel()
+	if dashboardServer != nil {
+		dashboardServer.Stop()
+	}
 	heartbeatService.Stop()
 	cronService.Stop()
 	agentLoop.Stop()

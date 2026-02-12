@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,12 +68,19 @@ func (c *WhatsAppChannel) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create store directory: %w", err)
 	}
 
-	// 2. Initialise SQLite container
+	// 2. Initialise SQLite container with serialized access
 	dbLog := waLog.Stdout("WhatsApp-DB", "WARN", true)
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)", storePath)
-	container, err := sqlstore.New(ctx, "sqlite", dsn, dbLog)
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)", storePath)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return fmt.Errorf("failed to initialise whatsmeow store: %w", err)
+		return fmt.Errorf("failed to open whatsmeow database: %w", err)
+	}
+	// Serialize all database access through a single connection to prevent SQLITE_BUSY
+	db.SetMaxOpenConns(1)
+
+	container := sqlstore.NewWithDB(db, "sqlite", dbLog)
+	if err := container.Upgrade(ctx); err != nil {
+		return fmt.Errorf("failed to upgrade whatsmeow database: %w", err)
 	}
 	c.container = container
 

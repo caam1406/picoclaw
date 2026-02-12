@@ -15,7 +15,15 @@ type Config struct {
 	Providers ProvidersConfig `json:"providers"`
 	Gateway   GatewayConfig   `json:"gateway"`
 	Tools     ToolsConfig     `json:"tools"`
+	Dashboard DashboardConfig `json:"dashboard"`
 	mu        sync.RWMutex
+}
+
+type DashboardConfig struct {
+	Enabled bool   `json:"enabled" env:"PICOCLAW_DASHBOARD_ENABLED"`
+	Host    string `json:"host" env:"PICOCLAW_DASHBOARD_HOST"`
+	Port    int    `json:"port" env:"PICOCLAW_DASHBOARD_PORT"`
+	Token   string `json:"token" env:"PICOCLAW_DASHBOARD_TOKEN"`
 }
 
 type AgentsConfig struct {
@@ -198,6 +206,12 @@ func DefaultConfig() *Config {
 					MaxResults: 5,
 				},
 			},
+		},
+		Dashboard: DashboardConfig{
+			Enabled: false,
+			Host:    "127.0.0.1",
+			Port:    18791,
+			Token:   "",
 		},
 	}
 }

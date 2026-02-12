@@ -18,6 +18,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/session"
@@ -143,6 +144,16 @@ func (al *AgentLoop) Stop() {
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {
 	al.tools.Register(tool)
+}
+
+// SetContactsStore connects the per-contact instructions store to the context builder.
+func (al *AgentLoop) SetContactsStore(store *contacts.Store) {
+	al.contextBuilder.SetContactsStore(store)
+}
+
+// GetSessionManager returns the session manager for dashboard access.
+func (al *AgentLoop) GetSessionManager() *session.SessionManager {
+	return al.sessions
 }
 
 func (al *AgentLoop) ProcessDirect(ctx context.Context, content, sessionKey string) (string, error) {

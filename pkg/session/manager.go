@@ -156,6 +156,40 @@ func (sm *SessionManager) Save(session *Session) error {
 	return os.WriteFile(sessionPath, data, 0644)
 }
 
+// SessionInfo provides a summary of a session for dashboard listing.
+type SessionInfo struct {
+	Key          string    `json:"key"`
+	MessageCount int       `json:"message_count"`
+	HasSummary   bool      `json:"has_summary"`
+	Created      time.Time `json:"created"`
+	Updated      time.Time `json:"updated"`
+}
+
+// ListSessions returns summary information for all sessions.
+func (sm *SessionManager) ListSessions() []SessionInfo {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	infos := make([]SessionInfo, 0, len(sm.sessions))
+	for _, s := range sm.sessions {
+		infos = append(infos, SessionInfo{
+			Key:          s.Key,
+			MessageCount: len(s.Messages),
+			HasSummary:   s.Summary != "",
+			Created:      s.Created,
+			Updated:      s.Updated,
+		})
+	}
+	return infos
+}
+
+// GetSession returns a session by key, or nil if not found.
+func (sm *SessionManager) GetSession(key string) *Session {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	return sm.sessions[key]
+}
+
 func (sm *SessionManager) loadSessions() error {
 	files, err := os.ReadDir(sm.storage)
 	if err != nil {

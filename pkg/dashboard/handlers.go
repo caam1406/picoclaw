@@ -1,0 +1,181 @@
+package dashboard
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/sipeed/picoclaw/pkg/contacts"
+)
+
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	status := map[string]interface{}{
+		"version":  "0.1.0",
+		"uptime":   time.Since(s.startTime).String(),
+		"channels": s.channelManager.GetStatus(),
+	}
+
+	writeJSON(w, status)
+}
+
+func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	writeJSON(w, s.channelManager.GetStatus())
+}
+
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessions := s.sessions.ListSessions()
+	writeJSON(w, sessions)
+}
+
+func (s *Server) handleSessionDetail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract session key from path: /api/v1/sessions/{key}
+	key := strings.TrimPrefix(r.URL.Path, "/api/v1/sessions/")
+	if key == "" {
+		http.Error(w, `{"error":"session key required"}`, http.StatusBadRequest)
+		return
+	}
+
+	sess := s.sessions.GetSession(key)
+	if sess == nil {
+		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
+		return
+	}
+
+	writeJSON(w, sess)
+}
+
+func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		contacts := s.contactsStore.List()
+		writeJSON(w, contacts)
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleContactDetail(w http.ResponseWriter, r *http.Request) {
+	// Extract channel and id from path: /api/v1/contacts/{channel}/{id}
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/contacts/")
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		http.Error(w, `{"error":"path must be /api/v1/contacts/{channel}/{id}"}`, http.StatusBadRequest)
+		return
+	}
+	channel := parts[0]
+	contactID := parts[1]
+
+	switch r.Method {
+	case http.MethodGet:
+		ci := s.contactsStore.Get(channel, contactID)
+		if ci == nil {
+			http.Error(w, `{"error":"contact not found"}`, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, ci)
+
+	case http.MethodPut:
+		var body struct {
+			DisplayName  string `json:"display_name"`
+			Instructions string `json:"instructions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+			return
+		}
+
+		ci := contacts.ContactInstruction{
+			ContactID:    contactID,
+			Channel:      channel,
+			DisplayName:  body.DisplayName,
+			Instructions: body.Instructions,
+		}
+
+		if err := s.contactsStore.Set(ci); err != nil {
+			http.Error(w, `{"error":"failed to save contact instruction"}`, http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, map[string]string{"status": "ok"})
+
+	case http.MethodDelete:
+		if err := s.contactsStore.Delete(channel, contactID); err != nil {
+			http.Error(w, `{"error":"contact not found"}`, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "deleted"})
+
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Channel string `json:"channel"`
+		ChatID  string `json:"chat_id"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		return
+	}
+
+	if body.Channel == "" || body.ChatID == "" || body.Content == "" {
+		http.Error(w, `{"error":"channel, chat_id and content are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	if err := s.channelManager.SendToChannel(ctx, body.Channel, body.ChatID, body.Content); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]string{"status": "sent"})
+}
+
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Auth via query param for WebSocket
+	token := r.URL.Query().Get("token")
+	if token != s.config.Token {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	s.hub.handleWebSocket(w, r)
+}
+
+func writeJSON(w http.ResponseWriter, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
