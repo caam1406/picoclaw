@@ -652,6 +652,7 @@ func gatewayCmd() {
 
 		dashboardServer = dashboard.NewServer(
 			cfg.Dashboard,
+			cfg,
 			channelManager,
 			agentLoop.GetSessionManager(),
 			contactsStore,

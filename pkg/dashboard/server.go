@@ -15,10 +15,15 @@ import (
 	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/session"
+	"github.com/sipeed/picoclaw/pkg/storage"
 )
+
+// StorageFactory is a function that creates a storage instance for testing connections
+type StorageFactory func(storageType, databaseURL string) (storage.Storage, error)
 
 type Server struct {
 	config         config.DashboardConfig
+	cfg            *config.Config // Full config for storage settings
 	channelManager *channels.Manager
 	sessions       *session.SessionManager
 	contactsStore  *contacts.Store
@@ -26,21 +31,33 @@ type Server struct {
 	hub            *Hub
 	httpServer     *http.Server
 	startTime      time.Time
+	storageFactory StorageFactory
 }
 
 func NewServer(
-	cfg config.DashboardConfig,
+	dashboardCfg config.DashboardConfig,
+	fullCfg *config.Config,
 	channelManager *channels.Manager,
 	sessions *session.SessionManager,
 	contactsStore *contacts.Store,
 	msgBus *bus.MessageBus,
 ) *Server {
+	// Default storage factory
+	defaultFactory := func(storageType, databaseURL string) (storage.Storage, error) {
+		return storage.NewStorage(storage.Config{
+			Type:        storageType,
+			DatabaseURL: databaseURL,
+		})
+	}
+
 	return &Server{
-		config:         cfg,
+		config:         dashboardCfg,
+		cfg:            fullCfg,
 		channelManager: channelManager,
 		sessions:       sessions,
 		contactsStore:  contactsStore,
 		msgBus:         msgBus,
+		storageFactory: defaultFactory,
 	}
 }
 
@@ -62,6 +79,11 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/v1/contacts", s.authMiddleware(s.handleContacts))
 	mux.HandleFunc("/api/v1/contacts/", s.authMiddleware(s.handleContactDetail))
 	mux.HandleFunc("/api/v1/send", s.authMiddleware(s.handleSend))
+
+	// Storage configuration endpoints
+	mux.HandleFunc("/api/v1/config/storage", s.authMiddleware(s.handleGetStorageConfig))
+	mux.HandleFunc("/api/v1/config/storage/update", s.authMiddleware(s.handleUpdateStorageConfig))
+	mux.HandleFunc("/api/v1/config/storage/test", s.authMiddleware(s.handleTestStorageConnection))
 
 	// WebSocket (auth via query param)
 	mux.HandleFunc("/ws", s.handleWebSocket)

@@ -8,7 +8,9 @@ require (
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/chzyer/readline v1.5.1
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
+	github.com/gorilla/websocket v1.5.3
 	github.com/larksuite/oapi-sdk-go/v3 v3.5.3
+	github.com/lib/pq v1.10.9
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.1
 	github.com/tencent-connect/botgo v0.2.1
@@ -27,7 +29,6 @@ require (
 	github.com/go-resty/resty/v2 v2.17.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
