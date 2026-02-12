@@ -42,8 +42,9 @@ type ChannelsConfig struct {
 
 type WhatsAppConfig struct {
 	Enabled   bool     `json:"enabled" env:"PICOCLAW_CHANNELS_WHATSAPP_ENABLED"`
-	BridgeURL string   `json:"bridge_url" env:"PICOCLAW_CHANNELS_WHATSAPP_BRIDGE_URL"`
+	StorePath string   `json:"store_path" env:"PICOCLAW_CHANNELS_WHATSAPP_STORE_PATH"`
 	AllowFrom []string `json:"allow_from" env:"PICOCLAW_CHANNELS_WHATSAPP_ALLOW_FROM"`
+	BridgeURL string   `json:"bridge_url,omitempty"` // legado, ignorado
 }
 
 type TelegramConfig struct {
@@ -94,6 +95,7 @@ type ProvidersConfig struct {
 	OpenRouter ProviderConfig `json:"openrouter"`
 	Groq       ProviderConfig `json:"groq"`
 	Zhipu      ProviderConfig `json:"zhipu"`
+	ZAI        ProviderConfig `json:"zai"`
 	VLLM       ProviderConfig `json:"vllm"`
 	Gemini     ProviderConfig `json:"gemini"`
 }
@@ -135,7 +137,7 @@ func DefaultConfig() *Config {
 		Channels: ChannelsConfig{
 			WhatsApp: WhatsAppConfig{
 				Enabled:   false,
-				BridgeURL: "ws://localhost:3001",
+				StorePath: "~/.picoclaw/whatsapp.db",
 				AllowFrom: []string{},
 			},
 			Telegram: TelegramConfig{
@@ -181,6 +183,7 @@ func DefaultConfig() *Config {
 			OpenRouter: ProviderConfig{},
 			Groq:       ProviderConfig{},
 			Zhipu:      ProviderConfig{},
+			ZAI:        ProviderConfig{},
 			VLLM:       ProviderConfig{},
 			Gemini:     ProviderConfig{},
 		},
@@ -262,6 +265,9 @@ func (c *Config) GetAPIKey() string {
 	if c.Providers.Zhipu.APIKey != "" {
 		return c.Providers.Zhipu.APIKey
 	}
+	if c.Providers.ZAI.APIKey != "" {
+		return c.Providers.ZAI.APIKey
+	}
 	if c.Providers.Groq.APIKey != "" {
 		return c.Providers.Groq.APIKey
 	}
@@ -282,6 +288,12 @@ func (c *Config) GetAPIBase() string {
 	}
 	if c.Providers.Zhipu.APIKey != "" {
 		return c.Providers.Zhipu.APIBase
+	}
+	if c.Providers.ZAI.APIKey != "" {
+		if c.Providers.ZAI.APIBase != "" {
+			return c.Providers.ZAI.APIBase
+		}
+		return "https://api.z.ai/api/paas/v4"
 	}
 	if c.Providers.VLLM.APIKey != "" && c.Providers.VLLM.APIBase != "" {
 		return c.Providers.VLLM.APIBase
