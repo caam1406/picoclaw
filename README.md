@@ -342,12 +342,7 @@ PicoClaw stores data in your configured workspace (default: `~/.picoclaw/workspa
 ├── sessions/          # Conversation sessions and history
 ├── memory/           # Long-term memory (MEMORY.md)
 ├── cron/             # Scheduled jobs database
-├── skills/           # Custom skills
-├── AGENTS.md         # Agent behavior guide
-├── IDENTITY.md       # Agent identity
-├── SOUL.md           # Agent soul
-├── TOOLS.md          # Tool descriptions
-└── USER.md           # User preferences
+└── skills/           # Custom skills
 ```
 
 ### Providers

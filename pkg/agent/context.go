@@ -113,17 +113,45 @@ func (cb *ContextBuilder) buildToolsSection() string {
 	return sb.String()
 }
 
+// getTechnicalContext returns time, runtime, workspace, tools, and rules without any persona/identity.
+// Used when the user has set a master instruction so the only identity is the user's.
+func (cb *ContextBuilder) getTechnicalContext() string {
+	now := time.Now().Format("2006-01-02 15:04 (Monday)")
+	workspacePath, _ := filepath.Abs(filepath.Join(cb.workspace))
+	runtimeInfo := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
+	toolsSection := cb.buildToolsSection()
+
+	return fmt.Sprintf(`# Context
+
+## Current Time
+%s
+
+## Runtime
+%s
+
+## Workspace
+Your workspace is at: %s
+- Memory: %s/memory/MEMORY.md
+- Daily Notes: %s/memory/YYYYMM/YYYYMMDD.md
+- Skills: %s/skills/{skill-name}/SKILL.md
+
+%s
+
+## Important Rules
+
+1. **ALWAYS use tools** - When you need to perform an action (schedule reminders, send messages, execute commands, etc.), you MUST call the appropriate tool. Do NOT just say you'll do it or pretend to do it.
+
+2. **Be helpful and accurate** - When using tools, briefly explain what you're doing.
+
+3. **Memory** - When remembering something, write to %s/memory/MEMORY.md`,
+		now, runtimeInfo, workspacePath, workspacePath, workspacePath, workspacePath, toolsSection, workspacePath)
+}
+
 func (cb *ContextBuilder) BuildSystemPrompt() string {
 	parts := []string{}
 
 	// Core identity section
 	parts = append(parts, cb.getIdentity())
-
-	// Bootstrap files
-	bootstrapContent := cb.LoadBootstrapFiles()
-	if bootstrapContent != "" {
-		parts = append(parts, bootstrapContent)
-	}
 
 	// Skills - show summary, AI can read full content with read_file tool
 	skillsSummary := cb.skillsLoader.BuildSkillsSummary()
@@ -145,41 +173,64 @@ The following skills extend your capabilities. To use a skill, read its SKILL.md
 	return strings.Join(parts, "\n\n---\n\n")
 }
 
-func (cb *ContextBuilder) LoadBootstrapFiles() string {
-	bootstrapFiles := []string{
-		"AGENTS.md",
-		"SOUL.md",
-		"USER.md",
-		"IDENTITY.md",
+// BuildSystemPromptWithMasterInstruction builds the system prompt when the user has set a custom instruction
+// (contact-specific or default). The instruction is the only identity/persona.
+func (cb *ContextBuilder) BuildSystemPromptWithMasterInstruction(instruction string) string {
+	parts := []string{}
+
+	// Part 1: user instruction as the sole identity/persona
+	parts = append(parts, "## Your instructions\n\n"+instruction)
+
+	// Part 2: technical context (time, runtime, workspace, tools, rules)
+	parts = append(parts, cb.getTechnicalContext())
+
+	// Part 3: Skills summary
+	skillsSummary := cb.skillsLoader.BuildSkillsSummary()
+	if skillsSummary != "" {
+		parts = append(parts, fmt.Sprintf(`# Skills
+
+The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
+
+%s`, skillsSummary))
 	}
 
-	var result string
-	for _, filename := range bootstrapFiles {
-		filePath := filepath.Join(cb.workspace, filename)
-		if data, err := os.ReadFile(filePath); err == nil {
-			result += fmt.Sprintf("## %s\n\n%s\n\n", filename, string(data))
-		}
+	// Part 4: Memory context
+	memoryContext := cb.memory.GetMemoryContext()
+	if memoryContext != "" {
+		parts = append(parts, "# Memory\n\n"+memoryContext)
 	}
 
-	return result
+	return strings.Join(parts, "\n\n---\n\n")
 }
 
 func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string) []providers.Message {
 	messages := []providers.Message{}
 
-	systemPrompt := cb.BuildSystemPrompt()
-
-	// Add Current Session info if provided
-	if channel != "" && chatID != "" {
-		systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
-
-		// Inject per-contact custom instructions if available, otherwise try default instructions
-		if cb.contactsStore != nil {
-			sessionKey := fmt.Sprintf("%s:%s", channel, chatID)
-			if instruction := cb.contactsStore.GetForSession(sessionKey); instruction != "" {
-				systemPrompt += "\n\n## Contact-Specific Instructions\n\n" + instruction
-			} else if defaultInst := cb.contactsStore.GetDefault(channel); defaultInst != "" {
-				systemPrompt += "\n\n## Default Instructions\n\n" + defaultInst
+	var systemPrompt string
+	if channel != "" && chatID != "" && cb.contactsStore != nil {
+		sessionKey := fmt.Sprintf("%s:%s", channel, chatID)
+		effectiveInstruction := cb.contactsStore.GetForSession(sessionKey)
+		if effectiveInstruction == "" {
+			effectiveInstruction = cb.contactsStore.GetDefault(channel)
+		}
+		if effectiveInstruction != "" {
+			// User instruction is master: it is the only identity; no picoclaw, no SOUL/IDENTITY
+			systemPrompt = cb.BuildSystemPromptWithMasterInstruction(effectiveInstruction)
+			systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
+		}
+	}
+	if systemPrompt == "" {
+		// No custom instruction: use default identity (picoclaw)
+		systemPrompt = cb.BuildSystemPrompt()
+		if channel != "" && chatID != "" {
+			systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
+			if cb.contactsStore != nil {
+				sessionKey := fmt.Sprintf("%s:%s", channel, chatID)
+				if instruction := cb.contactsStore.GetForSession(sessionKey); instruction != "" {
+					systemPrompt += "\n\n## Contact-Specific Instructions\n\n" + instruction
+				} else if defaultInst := cb.contactsStore.GetDefault(channel); defaultInst != "" {
+					systemPrompt += "\n\n## Default Instructions\n\n" + defaultInst
+				}
 			}
 		}
 	}

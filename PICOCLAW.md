@@ -182,12 +182,14 @@ Outbound: AgentLoop -> MessageBus.PublishOutbound() -> Manager.dispatchOutbound(
 
 ### Hierarquia de Instrucoes
 
-Quando uma mensagem chega, o sistema injeta instrucoes no system prompt nesta ordem de prioridade:
+Quando uma mensagem chega, o sistema resolve a instrucao efetiva nesta ordem de prioridade:
 
 1. **Contato registrado**: Se o sender tem uma `ContactInstruction`, usa ela
 2. **Default por canal**: Se nao e contato, tenta `defaults[channel]` (ex: "whatsapp")
 3. **Default global**: Se nao tem por canal, usa `defaults["*"]`
 4. **Nenhuma**: Prompt padrao sem instrucoes extras
+
+**Instrucao como mestre**: Quando existe instrucao (contato ou default), ela e a **unica** definicao de identidade/persona. O system prompt inclui apenas a instrucao do usuario, contexto tecnico (hora, workspace, tools, regras), skills e memoria. Quando nao existe instrucao, usa a identidade padrao (picoclaw) com contexto tecnico, skills e memoria.
 
 ---
 
@@ -225,10 +227,6 @@ Quando uma mensagem chega, o sistema injeta instrucoes no system prompt nesta or
 
 | Arquivo | Descricao |
 |---------|-----------|
-| `AGENTS.md` | Instrucoes de comportamento do agente |
-| `SOUL.md` | Personalidade e valores |
-| `USER.md` | Informacoes do usuario |
-| `IDENTITY.md` | Identidade completa do sistema |
 | `memory/MEMORY.md` | Memoria de longo prazo |
 
 ---
@@ -359,33 +357,28 @@ type ContextBuilder struct {
 }
 ```
 
-**BuildSystemPrompt()** monta o prompt com:
-1. **Identity**: nome, hora, runtime, workspace, regras
-2. **Bootstrap Files**: AGENTS.md, SOUL.md, USER.md, IDENTITY.md
-3. **Skills Summary**: XML com skills disponiveis
-4. **Memory Context**: conteudo de memory/MEMORY.md
+**BuildMessages()** escolhe o fluxo conforme a instrucao efetiva (GetForSession(sessionKey) ou GetDefault(channel)):
 
-**BuildMessages()** adiciona ao prompt:
-1. System prompt (acima)
-2. Current Session info (channel, chatID)
-3. **Contact/Default Instructions** (hierarquia de prioridade)
-4. Summary of Previous Conversation (se existir)
-5. History messages
-6. User message atual
+- **Com instrucao (master)**: `BuildSystemPromptWithMasterInstruction(instruction)` monta o prompt com (1) instrucao do usuario como unica identidade, (2) contexto tecnico (getTechnicalContext: hora, runtime, workspace, tools, regras), (3) Skills e Memory. Depois adiciona Current Session e Summary.
 
-### Injecao de Instrucoes (context.go, linhas 176-183)
+- **Sem instrucao**: `BuildSystemPrompt()` monta o prompt com (1) Identity (getIdentity: picoclaw, hora, runtime, workspace, regras), (2) Skills e Memory. Depois **BuildMessages()** adiciona Current Session, Contact/Default Instructions (se houver) e Summary.
+
+Em ambos os fluxos: History messages e User message atual fecham as mensagens.
+
+### Resumo da logica em BuildMessages (context.go)
 
 ```go
-if cb.contactsStore != nil {
-    sessionKey := fmt.Sprintf("%s:%s", channel, chatID)
-    if instruction := cb.contactsStore.GetForSession(sessionKey); instruction != "" {
-        // Contato registrado: usa instrucao do contato
-        systemPrompt += "\n\n## Contact-Specific Instructions\n\n" + instruction
-    } else if defaultInst := cb.contactsStore.GetDefault(channel); defaultInst != "" {
-        // Nao-contato: usa default (canal especifico ou global "*")
-        systemPrompt += "\n\n## Default Instructions\n\n" + defaultInst
-    }
+// Se ha channel, chatID e contactsStore, resolve instrucao efetiva
+effectiveInstruction := GetForSession(sessionKey) ou GetDefault(channel)
+if effectiveInstruction != "" {
+    systemPrompt = BuildSystemPromptWithMasterInstruction(effectiveInstruction)
+    systemPrompt += "## Current Session\n..."
+} else {
+    systemPrompt = BuildSystemPrompt()
+    systemPrompt += "## Current Session\n..."
+    // Se houver instrucao de contato/default, anexa como Contact-Specific ou Default Instructions
 }
+// Summary, history, user message
 ```
 
 ### Sumarizacao
@@ -1072,7 +1065,7 @@ Todos os canais tem: `enabled` (bool), `allow_from` ([]string)
    b. GetHistory("whatsapp:5511...@s.whatsapp.net") -> []
    c. GetSummary("whatsapp:5511...@s.whatsapp.net") -> ""
    d. BuildMessages():
-      - BuildSystemPrompt() -> identity + bootstrap files + skills + memory
+      - BuildSystemPrompt() -> identity + skills + memory
       - "## Current Session\nChannel: whatsapp\nChat ID: 5511..."
       - GetForSession("whatsapp:5511...@s.whatsapp.net") -> "" (nao e contato)
       - GetDefault("whatsapp") -> "Responda de forma breve" (ou fallback "*")
