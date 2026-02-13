@@ -560,6 +560,13 @@ func (s *Server) handleWhatsAppContactList(w http.ResponseWriter, r *http.Reques
 		groups = nil
 	}
 
+	// Contatos da agenda (lista de contatos do celular sincronizada no WhatsApp)
+	addressBookContacts, errAddr := wa.GetAddressBookContacts(r.Context())
+	if errAddr != nil {
+		logger.WarnCF("dashboard", "GetAddressBookContacts failed", map[string]interface{}{"error": errAddr.Error()})
+		addressBookContacts = nil
+	}
+
 	// Build recent_chats from sessions (whatsapp:* keys); exclude JIDs already in groups
 	groupJIDs := make(map[string]bool)
 	for _, g := range groups {
@@ -575,15 +582,16 @@ func (s *Server) handleWhatsAppContactList(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 		recentChats = append(recentChats, map[string]interface{}{
-			"jid":     chatID,
-			"label":   chatID,
+			"jid":      chatID,
+			"label":    chatID,
 			"is_group": strings.Contains(chatID, "@g.us"),
 		})
 	}
 
 	writeJSON(w, map[string]interface{}{
-		"self_jid":     selfJID,
-		"groups":       groups,
-		"recent_chats": recentChats,
+		"self_jid":              selfJID,
+		"groups":                groups,
+		"address_book_contacts": addressBookContacts,
+		"recent_chats":          recentChats,
 	})
 }

@@ -541,6 +541,59 @@ func (c *WhatsAppChannel) GetJoinedGroups(ctx context.Context) ([]WhatsAppGroupI
 	return out, nil
 }
 
+// WhatsAppContactInfo is a contact from the address book (agenda) for the dashboard contact picker.
+type WhatsAppContactInfo struct {
+	JID   string `json:"jid"`
+	Label string `json:"label"`
+}
+
+// GetAddressBookContacts returns the list of individual contacts from the WhatsApp address book (agenda),
+// not group participants. Uses the contact list synced to the device store (critical_unblock_low app state).
+func (c *WhatsAppChannel) GetAddressBookContacts(ctx context.Context) ([]WhatsAppContactInfo, error) {
+	c.mu.Lock()
+	client := c.client
+	selfJID := ""
+	if client != nil && client.Store != nil && client.Store.ID != nil {
+		selfJID = client.Store.ID.String()
+	}
+	c.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("whatsapp client not connected")
+	}
+	if client.Store == nil || client.Store.Contacts == nil {
+		return nil, nil
+	}
+	contacts, err := client.Store.Contacts.GetAllContacts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WhatsAppContactInfo, 0, len(contacts))
+	for jid, info := range contacts {
+		jidStr := jid.String()
+		if jidStr == "" || jidStr == selfJID {
+			continue
+		}
+		if jid.Server != types.DefaultUserServer {
+			continue
+		}
+		label := info.FullName
+		if label == "" {
+			label = info.FirstName
+		}
+		if label == "" {
+			label = info.PushName
+		}
+		if label == "" {
+			label = info.BusinessName
+		}
+		if label == "" {
+			label = jidStr
+		}
+		out = append(out, WhatsAppContactInfo{JID: jidStr, Label: label})
+	}
+	return out, nil
+}
+
 // Send delivers a text message to the specified WhatsApp chat.
 func (c *WhatsAppChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	c.mu.Lock()

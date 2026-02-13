@@ -280,7 +280,7 @@ function editContact(channel, id) {
   });
 }
 
-let waContactListData = null; // { self_jid, groups, recent_chats }
+let waContactListData = null; // { self_jid, groups, address_book_contacts, recent_chats }
 
 function showAddContact() {
   document.getElementById('modal-add-contact').classList.add('active');
@@ -327,6 +327,12 @@ function loadWhatsAppContactList() {
     if (data.self_jid) {
       html.push('<div class="wa-contact-list-section">Meu numero</div>');
       html.push(buildWaContactItem(data.self_jid, 'Meu numero', data.self_jid.replace(/@.*/, ''), 'self'));
+    }
+    if (data.address_book_contacts && data.address_book_contacts.length > 0) {
+      html.push('<div class="wa-contact-list-section">Agenda (' + data.address_book_contacts.length + ')</div>');
+      data.address_book_contacts.forEach(c => {
+        html.push(buildWaContactItem(c.jid, c.label || c.jid, c.jid, 'Contato'));
+      });
     }
     if (data.recent_chats && data.recent_chats.length > 0) {
       const contactsOnly = data.recent_chats.filter(c => !c.is_group);
