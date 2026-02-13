@@ -159,6 +159,341 @@
     <!-- Settings View -->
     <div id="view-settings" class="view">
       <div class="card">
+        <div class="card-title">ConfiguraÃ§Ã£o do Agente e Sistema</div>
+        <div class="section-title">Agente</div>
+        <div class="form-group">
+          <label>Workspace</label>
+          <input type="text" id="agent-workspace" placeholder="~/.picoclaw/workspace">
+        </div>
+        <div class="form-group">
+          <label>Modelo padrÃ£o</label>
+          <input type="text" id="agent-model" placeholder="glm-4.7">
+        </div>
+        <div class="form-group">
+          <label>Max tokens</label>
+          <input type="number" id="agent-max-tokens" min="1">
+        </div>
+        <div class="form-group">
+          <label>Temperatura</label>
+          <input type="number" id="agent-temperature" step="0.1" min="0" max="2">
+        </div>
+        <div class="form-group">
+          <label>Max tool iterations</label>
+          <input type="number" id="agent-max-tool-iterations" min="1">
+        </div>
+
+        <div class="section-title">Gateway</div>
+        <div class="form-group">
+          <label>Host</label>
+          <input type="text" id="gateway-host" placeholder="0.0.0.0">
+        </div>
+        <div class="form-group">
+          <label>Porta</label>
+          <input type="number" id="gateway-port" min="1" max="65535">
+        </div>
+
+        <div class="section-title">Dashboard</div>
+        <div class="form-group checkbox-row">
+          <label>
+            <input type="checkbox" id="dashboard-enabled">
+            <span>Habilitar dashboard</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Host</label>
+          <input type="text" id="dashboard-host" placeholder="127.0.0.1">
+        </div>
+        <div class="form-group">
+          <label>Porta</label>
+          <input type="number" id="dashboard-port" min="1" max="65535">
+        </div>
+        <div class="form-group checkbox-row">
+          <label>
+            <input type="checkbox" id="dashboard-contacts-only">
+            <span>Responder apenas contatos registrados</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Token de acesso</label>
+          <input type="password" id="dashboard-token" placeholder="Defina um novo token">
+          <div class="form-hint" id="dashboard-token-hint"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Providers LLM</div>
+        <details class="config-details">
+          <summary>OpenRouter</summary>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="provider-openrouter-key" placeholder="Nova chave">
+            <div class="form-hint" id="provider-openrouter-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>API Base</label>
+            <input type="text" id="provider-openrouter-base" placeholder="https://openrouter.ai/api/v1">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>Anthropic</summary>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="provider-anthropic-key" placeholder="Nova chave">
+            <div class="form-hint" id="provider-anthropic-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>API Base</label>
+            <input type="text" id="provider-anthropic-base">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>OpenAI</summary>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="provider-openai-key" placeholder="Nova chave">
+            <div class="form-hint" id="provider-openai-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>API Base</label>
+            <input type="text" id="provider-openai-base">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>Gemini</summary>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="provider-gemini-key" placeholder="Nova chave">
+            <div class="form-hint" id="provider-gemini-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>API Base</label>
+            <input type="text" id="provider-gemini-base">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>Zhipu</summary>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="provider-zhipu-key" placeholder="Nova chave">
+            <div class="form-hint" id="provider-zhipu-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>API Base</label>
+            <input type="text" id="provider-zhipu-base">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>Z.AI</summary>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="provider-zai-key" placeholder="Nova chave">
+            <div class="form-hint" id="provider-zai-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>API Base</label>
+            <input type="text" id="provider-zai-base">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>Groq</summary>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="provider-groq-key" placeholder="Nova chave">
+            <div class="form-hint" id="provider-groq-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>API Base</label>
+            <input type="text" id="provider-groq-base">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>vLLM / Local</summary>
+          <div class="form-group">
+            <label>API Key</label>
+            <input type="password" id="provider-vllm-key" placeholder="Nova chave">
+            <div class="form-hint" id="provider-vllm-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>API Base</label>
+            <input type="text" id="provider-vllm-base">
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Canais</div>
+        <details class="config-details">
+          <summary>WhatsApp</summary>
+          <div class="form-group checkbox-row">
+            <label>
+              <input type="checkbox" id="channel-whatsapp-enabled">
+              <span>Habilitar WhatsApp</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Store path</label>
+            <input type="text" id="channel-whatsapp-store-path" placeholder="~/.picoclaw/whatsapp.db">
+          </div>
+          <div class="form-group">
+            <label>Allow list</label>
+            <input type="text" id="channel-whatsapp-allow" placeholder="5511982650676, 5511999999999">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>Telegram</summary>
+          <div class="form-group checkbox-row">
+            <label>
+              <input type="checkbox" id="channel-telegram-enabled">
+              <span>Habilitar Telegram</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Token</label>
+            <input type="password" id="channel-telegram-token" placeholder="Novo token">
+            <div class="form-hint" id="channel-telegram-token-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>Allow list</label>
+            <input type="text" id="channel-telegram-allow" placeholder="123456789">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>Discord</summary>
+          <div class="form-group checkbox-row">
+            <label>
+              <input type="checkbox" id="channel-discord-enabled">
+              <span>Habilitar Discord</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Token</label>
+            <input type="password" id="channel-discord-token" placeholder="Novo token">
+            <div class="form-hint" id="channel-discord-token-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>Allow list</label>
+            <input type="text" id="channel-discord-allow" placeholder="123456789">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>Feishu / Lark</summary>
+          <div class="form-group checkbox-row">
+            <label>
+              <input type="checkbox" id="channel-feishu-enabled">
+              <span>Habilitar Feishu</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label>App ID</label>
+            <input type="text" id="channel-feishu-app-id">
+          </div>
+          <div class="form-group">
+            <label>App Secret</label>
+            <input type="password" id="channel-feishu-app-secret" placeholder="Novo secret">
+            <div class="form-hint" id="channel-feishu-app-secret-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>Encrypt Key</label>
+            <input type="password" id="channel-feishu-encrypt-key" placeholder="Nova chave">
+            <div class="form-hint" id="channel-feishu-encrypt-key-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>Verification Token</label>
+            <input type="password" id="channel-feishu-verification-token" placeholder="Novo token">
+            <div class="form-hint" id="channel-feishu-verification-token-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>Allow list</label>
+            <input type="text" id="channel-feishu-allow">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>QQ</summary>
+          <div class="form-group checkbox-row">
+            <label>
+              <input type="checkbox" id="channel-qq-enabled">
+              <span>Habilitar QQ</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label>App ID</label>
+            <input type="text" id="channel-qq-app-id">
+          </div>
+          <div class="form-group">
+            <label>App Secret</label>
+            <input type="password" id="channel-qq-app-secret" placeholder="Novo secret">
+            <div class="form-hint" id="channel-qq-app-secret-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>Allow list</label>
+            <input type="text" id="channel-qq-allow">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>DingTalk</summary>
+          <div class="form-group checkbox-row">
+            <label>
+              <input type="checkbox" id="channel-dingtalk-enabled">
+              <span>Habilitar DingTalk</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Client ID</label>
+            <input type="text" id="channel-dingtalk-client-id">
+          </div>
+          <div class="form-group">
+            <label>Client Secret</label>
+            <input type="password" id="channel-dingtalk-client-secret" placeholder="Novo secret">
+            <div class="form-hint" id="channel-dingtalk-client-secret-hint"></div>
+          </div>
+          <div class="form-group">
+            <label>Allow list</label>
+            <input type="text" id="channel-dingtalk-allow">
+          </div>
+        </details>
+        <details class="config-details">
+          <summary>MaixCam</summary>
+          <div class="form-group checkbox-row">
+            <label>
+              <input type="checkbox" id="channel-maixcam-enabled">
+              <span>Habilitar MaixCam</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Host</label>
+            <input type="text" id="channel-maixcam-host" placeholder="0.0.0.0">
+          </div>
+          <div class="form-group">
+            <label>Porta</label>
+            <input type="number" id="channel-maixcam-port" min="1" max="65535">
+          </div>
+          <div class="form-group">
+            <label>Allow list</label>
+            <input type="text" id="channel-maixcam-allow">
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Ferramentas</div>
+        <div class="form-group">
+          <label>Web Search API Key</label>
+          <input type="password" id="tools-web-search-key" placeholder="Nova chave">
+          <div class="form-hint" id="tools-web-search-key-hint"></div>
+        </div>
+        <div class="form-group">
+          <label>Max resultados</label>
+          <input type="number" id="tools-web-search-max" min="1" max="20">
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-success" onclick="saveAppConfig()">Salvar ConfiguraÃ§Ãµes</button>
+        </div>
+        <div class="warning-box">
+          <strong>âš ï¸ Importante:</strong> AlteraÃ§Ãµes de gateway, dashboard, canais e providers exigem reinicializaÃ§Ã£o do PicoClaw.
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">Configuracao de Armazenamento</div>
         <div class="form-group">
           <label>Tipo de Storage</label>

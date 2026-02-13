@@ -83,6 +83,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/v1/send", s.authMiddleware(s.handleSend))
 
 	// Storage configuration endpoints
+	mux.HandleFunc("/api/v1/config", s.authMiddleware(s.handleConfig))
 	mux.HandleFunc("/api/v1/config/storage", s.authMiddleware(s.handleGetStorageConfig))
 	mux.HandleFunc("/api/v1/config/storage/update", s.authMiddleware(s.handleUpdateStorageConfig))
 	mux.HandleFunc("/api/v1/config/storage/test", s.authMiddleware(s.handleTestStorageConnection))
@@ -137,10 +138,13 @@ func (s *Server) Stop() {
 // authMiddleware wraps a handler with bearer token authentication.
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := s.extractToken(r)
-		if token != s.config.Token {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
+		// Se não houver token configurado, não aplicamos autenticação
+		if s.config.Token != "" {
+			token := s.extractToken(r)
+			if token != s.config.Token {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
 		}
 		next(w, r)
 	}

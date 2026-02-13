@@ -118,7 +118,7 @@ make install
 ### 🚀 Quick Start
 
 > [!TIP]
-> Set your API key in `~/.picoclaw/config.json`.
+> Configure your API key in the dashboard (Settings → Providers).
 > Get API keys: [OpenRouter](https://openrouter.ai/keys) (LLM) · [Zhipu](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) (LLM)
 > Web search is **optional** - get free [Brave Search API](https://brave.com/search/api) (2000 free queries/month)
 
@@ -128,7 +128,7 @@ make install
 picoclaw onboard
 ```
 
-**2. Configure** (`~/.picoclaw/config.json`)
+**2. Configure** (Dashboard)
 
 ```json
 {
@@ -331,7 +331,7 @@ picoclaw gateway
 
 ## ⚙️ Configuration
 
-Config file: `~/.picoclaw/config.json`
+Config DB: `~/.picoclaw/picoclaw.db` (edite pelo dashboard). As configuracoes ficam criptografadas e a chave mestra e armazenada no keyring do sistema.
 
 ### Workspace Layout
 
@@ -499,7 +499,7 @@ This is normal if you haven't configured a search API key yet. PicoClaw will pro
 
 To enable web search:
 1. Get a free API key at [https://brave.com/search/api](https://brave.com/search/api) (2000 free queries/month)
-2. Add to `~/.picoclaw/config.json`:
+2. Configure no dashboard (Settings → Ferramentas):
    ```json
    {
      "tools": {

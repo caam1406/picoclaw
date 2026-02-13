@@ -35,7 +35,7 @@
 PicoClaw e um agente AI ultra-leve escrito em Go. Conecta-se a multiplos canais de mensagem (WhatsApp, Telegram, Discord, etc.), processa mensagens com LLMs, executa tools e mantem contexto de conversacao.
 
 **Repositorio**: `github.com/sipeed/picoclaw`
-**Config**: `~/.picoclaw/config.json`
+**Config**: `~/.picoclaw/picoclaw.db` (editavel via dashboard)
 **Workspace**: `~/.picoclaw/workspace/`
 
 ### Componentes Principais
@@ -209,7 +209,7 @@ Quando uma mensagem chega, o sistema injeta instrucoes no system prompt nesta or
 
 ### Sequencia de Inicializacao (gateway)
 
-1. Carrega config (`~/.picoclaw/config.json`)
+1. Carrega config do DB (`~/.picoclaw/picoclaw.db`)
 2. Cria LLM Provider (HTTPProvider)
 3. Cria MessageBus (buffers: 100 inbound, 100 outbound)
 4. Cria AgentLoop (com ToolRegistry: 10+ tools)

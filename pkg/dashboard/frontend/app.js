@@ -4,6 +4,8 @@ let token = localStorage.getItem('picoclaw_token') || '';
 let ws = null;
 let currentContact = null; // {channel, id} of contact being edited
 let currentDefault = null; // channel key of default being edited
+let currentConfig = null;
+let currentSecrets = {};
 let liveMessages = [];
 const MAX_LIVE_MESSAGES = 200;
 
@@ -219,7 +221,7 @@ function showView(name) {
   if (view) view.classList.add('active');
 
   if (name === 'overview') loadOverview();
-  if (name === 'settings') loadStorageConfig();
+  if (name === 'settings') loadSettings();
   if (name === 'defaults') loadDefaults();
 }
 
@@ -436,6 +438,241 @@ function deleteDefault() {
 }
 
 // ─── Toast ──────────────────────────────────────────────────────────
+function loadSettings() {
+  loadStorageConfig();
+  loadAppConfig();
+}
+
+function loadAppConfig() {
+  apiFetch('/api/v1/config').then(data => {
+    currentConfig = data.config || {};
+    currentSecrets = data.secrets || {};
+    applyConfigToForm(currentConfig);
+  }).catch(() => {
+    toast('Erro ao carregar configuracao', true);
+  });
+}
+
+function applyConfigToForm(cfg) {
+  const agents = cfg.agents || {};
+  const defaults = agents.defaults || {};
+  setValue('agent-workspace', defaults.workspace || '');
+  setValue('agent-model', defaults.model || '');
+  setValue('agent-max-tokens', defaults.max_tokens ?? '');
+  setValue('agent-temperature', defaults.temperature ?? '');
+  setValue('agent-max-tool-iterations', defaults.max_tool_iterations ?? '');
+
+  const gateway = cfg.gateway || {};
+  setValue('gateway-host', gateway.host || '');
+  setValue('gateway-port', gateway.port ?? '');
+
+  const dashboard = cfg.dashboard || {};
+  setChecked('dashboard-enabled', !!dashboard.enabled);
+  setValue('dashboard-host', dashboard.host || '');
+  setValue('dashboard-port', dashboard.port ?? '');
+  setChecked('dashboard-contacts-only', !!dashboard.contacts_only);
+  setSecretHint('dashboard-token-hint', 'dashboard.token');
+
+  const providers = cfg.providers || {};
+  setValue('provider-openrouter-base', (providers.openrouter || {}).api_base || '');
+  setValue('provider-anthropic-base', (providers.anthropic || {}).api_base || '');
+  setValue('provider-openai-base', (providers.openai || {}).api_base || '');
+  setValue('provider-gemini-base', (providers.gemini || {}).api_base || '');
+  setValue('provider-zhipu-base', (providers.zhipu || {}).api_base || '');
+  setValue('provider-zai-base', (providers.zai || {}).api_base || '');
+  setValue('provider-groq-base', (providers.groq || {}).api_base || '');
+  setValue('provider-vllm-base', (providers.vllm || {}).api_base || '');
+
+  setSecretHint('provider-openrouter-key-hint', 'providers.openrouter.api_key');
+  setSecretHint('provider-anthropic-key-hint', 'providers.anthropic.api_key');
+  setSecretHint('provider-openai-key-hint', 'providers.openai.api_key');
+  setSecretHint('provider-gemini-key-hint', 'providers.gemini.api_key');
+  setSecretHint('provider-zhipu-key-hint', 'providers.zhipu.api_key');
+  setSecretHint('provider-zai-key-hint', 'providers.zai.api_key');
+  setSecretHint('provider-groq-key-hint', 'providers.groq.api_key');
+  setSecretHint('provider-vllm-key-hint', 'providers.vllm.api_key');
+
+  const channels = cfg.channels || {};
+  const whatsapp = channels.whatsapp || {};
+  setChecked('channel-whatsapp-enabled', !!whatsapp.enabled);
+  setValue('channel-whatsapp-store-path', whatsapp.store_path || '');
+  setValue('channel-whatsapp-allow', joinList(whatsapp.allow_from));
+
+  const telegram = channels.telegram || {};
+  setChecked('channel-telegram-enabled', !!telegram.enabled);
+  setValue('channel-telegram-allow', joinList(telegram.allow_from));
+  setSecretHint('channel-telegram-token-hint', 'channels.telegram.token');
+
+  const discord = channels.discord || {};
+  setChecked('channel-discord-enabled', !!discord.enabled);
+  setValue('channel-discord-allow', joinList(discord.allow_from));
+  setSecretHint('channel-discord-token-hint', 'channels.discord.token');
+
+  const feishu = channels.feishu || {};
+  setChecked('channel-feishu-enabled', !!feishu.enabled);
+  setValue('channel-feishu-app-id', feishu.app_id || '');
+  setValue('channel-feishu-allow', joinList(feishu.allow_from));
+  setSecretHint('channel-feishu-app-secret-hint', 'channels.feishu.app_secret');
+  setSecretHint('channel-feishu-encrypt-key-hint', 'channels.feishu.encrypt_key');
+  setSecretHint('channel-feishu-verification-token-hint', 'channels.feishu.verification_token');
+
+  const qq = channels.qq || {};
+  setChecked('channel-qq-enabled', !!qq.enabled);
+  setValue('channel-qq-app-id', qq.app_id || '');
+  setValue('channel-qq-allow', joinList(qq.allow_from));
+  setSecretHint('channel-qq-app-secret-hint', 'channels.qq.app_secret');
+
+  const dingtalk = channels.dingtalk || {};
+  setChecked('channel-dingtalk-enabled', !!dingtalk.enabled);
+  setValue('channel-dingtalk-client-id', dingtalk.client_id || '');
+  setValue('channel-dingtalk-allow', joinList(dingtalk.allow_from));
+  setSecretHint('channel-dingtalk-client-secret-hint', 'channels.dingtalk.client_secret');
+
+  const maixcam = channels.maixcam || {};
+  setChecked('channel-maixcam-enabled', !!maixcam.enabled);
+  setValue('channel-maixcam-host', maixcam.host || '');
+  setValue('channel-maixcam-port', maixcam.port ?? '');
+  setValue('channel-maixcam-allow', joinList(maixcam.allow_from));
+
+  const tools = cfg.tools || {};
+  const webSearch = (tools.web || {}).search || {};
+  setValue('tools-web-search-max', webSearch.max_results ?? '');
+  setSecretHint('tools-web-search-key-hint', 'tools.web.search.api_key');
+
+  clearSecretInputs([
+    'dashboard-token',
+    'provider-openrouter-key',
+    'provider-anthropic-key',
+    'provider-openai-key',
+    'provider-gemini-key',
+    'provider-zhipu-key',
+    'provider-zai-key',
+    'provider-groq-key',
+    'provider-vllm-key',
+    'channel-telegram-token',
+    'channel-discord-token',
+    'channel-feishu-app-secret',
+    'channel-feishu-encrypt-key',
+    'channel-feishu-verification-token',
+    'channel-qq-app-secret',
+    'channel-dingtalk-client-secret',
+    'tools-web-search-key'
+  ]);
+}
+
+function saveAppConfig() {
+  if (!currentConfig) {
+    toast('Configuracao nao carregada', true);
+    return;
+  }
+
+  const cfg = JSON.parse(JSON.stringify(currentConfig));
+  cfg.agents = cfg.agents || {};
+  cfg.agents.defaults = cfg.agents.defaults || {};
+  cfg.agents.defaults.workspace = getValue('agent-workspace');
+  cfg.agents.defaults.model = getValue('agent-model');
+  cfg.agents.defaults.max_tokens = toInt(getValue('agent-max-tokens'), cfg.agents.defaults.max_tokens);
+  cfg.agents.defaults.temperature = toFloat(getValue('agent-temperature'), cfg.agents.defaults.temperature);
+  cfg.agents.defaults.max_tool_iterations = toInt(getValue('agent-max-tool-iterations'), cfg.agents.defaults.max_tool_iterations);
+
+  cfg.gateway = cfg.gateway || {};
+  cfg.gateway.host = getValue('gateway-host');
+  cfg.gateway.port = toInt(getValue('gateway-port'), cfg.gateway.port);
+
+  cfg.dashboard = cfg.dashboard || {};
+  cfg.dashboard.enabled = getChecked('dashboard-enabled');
+  cfg.dashboard.host = getValue('dashboard-host');
+  cfg.dashboard.port = toInt(getValue('dashboard-port'), cfg.dashboard.port);
+  cfg.dashboard.contacts_only = getChecked('dashboard-contacts-only');
+
+  cfg.providers = cfg.providers || {};
+  cfg.providers.openrouter = cfg.providers.openrouter || {};
+  cfg.providers.openrouter.api_base = getValue('provider-openrouter-base');
+  cfg.providers.anthropic = cfg.providers.anthropic || {};
+  cfg.providers.anthropic.api_base = getValue('provider-anthropic-base');
+  cfg.providers.openai = cfg.providers.openai || {};
+  cfg.providers.openai.api_base = getValue('provider-openai-base');
+  cfg.providers.gemini = cfg.providers.gemini || {};
+  cfg.providers.gemini.api_base = getValue('provider-gemini-base');
+  cfg.providers.zhipu = cfg.providers.zhipu || {};
+  cfg.providers.zhipu.api_base = getValue('provider-zhipu-base');
+  cfg.providers.zai = cfg.providers.zai || {};
+  cfg.providers.zai.api_base = getValue('provider-zai-base');
+  cfg.providers.groq = cfg.providers.groq || {};
+  cfg.providers.groq.api_base = getValue('provider-groq-base');
+  cfg.providers.vllm = cfg.providers.vllm || {};
+  cfg.providers.vllm.api_base = getValue('provider-vllm-base');
+
+  cfg.channels = cfg.channels || {};
+  cfg.channels.whatsapp = cfg.channels.whatsapp || {};
+  cfg.channels.whatsapp.enabled = getChecked('channel-whatsapp-enabled');
+  cfg.channels.whatsapp.store_path = getValue('channel-whatsapp-store-path');
+  cfg.channels.whatsapp.allow_from = parseList(getValue('channel-whatsapp-allow'));
+
+  cfg.channels.telegram = cfg.channels.telegram || {};
+  cfg.channels.telegram.enabled = getChecked('channel-telegram-enabled');
+  cfg.channels.telegram.allow_from = parseList(getValue('channel-telegram-allow'));
+
+  cfg.channels.discord = cfg.channels.discord || {};
+  cfg.channels.discord.enabled = getChecked('channel-discord-enabled');
+  cfg.channels.discord.allow_from = parseList(getValue('channel-discord-allow'));
+
+  cfg.channels.feishu = cfg.channels.feishu || {};
+  cfg.channels.feishu.enabled = getChecked('channel-feishu-enabled');
+  cfg.channels.feishu.app_id = getValue('channel-feishu-app-id');
+  cfg.channels.feishu.allow_from = parseList(getValue('channel-feishu-allow'));
+
+  cfg.channels.qq = cfg.channels.qq || {};
+  cfg.channels.qq.enabled = getChecked('channel-qq-enabled');
+  cfg.channels.qq.app_id = getValue('channel-qq-app-id');
+  cfg.channels.qq.allow_from = parseList(getValue('channel-qq-allow'));
+
+  cfg.channels.dingtalk = cfg.channels.dingtalk || {};
+  cfg.channels.dingtalk.enabled = getChecked('channel-dingtalk-enabled');
+  cfg.channels.dingtalk.client_id = getValue('channel-dingtalk-client-id');
+  cfg.channels.dingtalk.allow_from = parseList(getValue('channel-dingtalk-allow'));
+
+  cfg.channels.maixcam = cfg.channels.maixcam || {};
+  cfg.channels.maixcam.enabled = getChecked('channel-maixcam-enabled');
+  cfg.channels.maixcam.host = getValue('channel-maixcam-host');
+  cfg.channels.maixcam.port = toInt(getValue('channel-maixcam-port'), cfg.channels.maixcam.port);
+  cfg.channels.maixcam.allow_from = parseList(getValue('channel-maixcam-allow'));
+
+  cfg.tools = cfg.tools || {};
+  cfg.tools.web = cfg.tools.web || {};
+  cfg.tools.web.search = cfg.tools.web.search || {};
+  cfg.tools.web.search.max_results = toInt(getValue('tools-web-search-max'), cfg.tools.web.search.max_results);
+
+  const secrets = {};
+  collectSecret('dashboard-token', 'dashboard.token', secrets);
+  collectSecret('provider-openrouter-key', 'providers.openrouter.api_key', secrets);
+  collectSecret('provider-anthropic-key', 'providers.anthropic.api_key', secrets);
+  collectSecret('provider-openai-key', 'providers.openai.api_key', secrets);
+  collectSecret('provider-gemini-key', 'providers.gemini.api_key', secrets);
+  collectSecret('provider-zhipu-key', 'providers.zhipu.api_key', secrets);
+  collectSecret('provider-zai-key', 'providers.zai.api_key', secrets);
+  collectSecret('provider-groq-key', 'providers.groq.api_key', secrets);
+  collectSecret('provider-vllm-key', 'providers.vllm.api_key', secrets);
+  collectSecret('channel-telegram-token', 'channels.telegram.token', secrets);
+  collectSecret('channel-discord-token', 'channels.discord.token', secrets);
+  collectSecret('channel-feishu-app-secret', 'channels.feishu.app_secret', secrets);
+  collectSecret('channel-feishu-encrypt-key', 'channels.feishu.encrypt_key', secrets);
+  collectSecret('channel-feishu-verification-token', 'channels.feishu.verification_token', secrets);
+  collectSecret('channel-qq-app-secret', 'channels.qq.app_secret', secrets);
+  collectSecret('channel-dingtalk-client-secret', 'channels.dingtalk.client_secret', secrets);
+  collectSecret('tools-web-search-key', 'tools.web.search.api_key', secrets);
+
+  apiFetch('/api/v1/config', {
+    method: 'PUT',
+    body: JSON.stringify({ config: cfg, secrets: secrets })
+  }).then(() => {
+    toast('Configuracao salva');
+    loadAppConfig();
+  }).catch(err => {
+    toast('Erro ao salvar: ' + err.message, true);
+  });
+}
+
 function toast(msg, isError) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -445,6 +682,74 @@ function toast(msg, isError) {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
+function setValue(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = value ?? '';
+}
+
+function getValue(id) {
+  const el = document.getElementById(id);
+  if (!el) return '';
+  return el.value.trim();
+}
+
+function setChecked(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.checked = !!value;
+}
+
+function getChecked(id) {
+  const el = document.getElementById(id);
+  return el ? el.checked : false;
+}
+
+function setSecretHint(id, path) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const masked = currentSecrets[path];
+  el.textContent = masked ? 'Atual: ' + masked : 'Nao configurado';
+}
+
+function joinList(list) {
+  if (!Array.isArray(list)) return '';
+  return list.join(', ');
+}
+
+function parseList(value) {
+  if (!value) return [];
+  return value.split(/[,\\n]+/).map(v => v.trim()).filter(Boolean);
+}
+
+function toInt(value, fallback) {
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+function toFloat(value, fallback) {
+  const n = parseFloat(value);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+function clearSecretInputs(ids) {
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.value = '';
+    }
+  });
+}
+
+function collectSecret(inputId, path, secrets) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  const value = el.value.trim();
+  if (value) {
+    secrets[path] = value;
+  }
+}
+
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;

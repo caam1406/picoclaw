@@ -122,7 +122,7 @@ uninstall:
 	@rm -f $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@echo "Removed binary from $(INSTALL_BIN_DIR)/$(BINARY_NAME)"
 	@echo "Note: Only the executable file has been deleted."
-	@echo "If you need to delete all configurations (config.json, workspace, etc.), run 'make uninstall-all'"
+	@echo "If you need to delete all configurations (config DB, workspace, etc.), run 'make uninstall-all'"
 
 ## uninstall-all: Remove picoclaw and all data
 uninstall-all:

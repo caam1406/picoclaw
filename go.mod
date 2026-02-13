@@ -5,7 +5,6 @@ go 1.24.0
 require (
 	github.com/adhocore/gronx v1.19.6
 	github.com/bwmarrin/discordgo v0.29.0
-	github.com/caarlos0/env/v11 v11.3.1
 	github.com/chzyer/readline v1.5.1
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/gorilla/websocket v1.5.3
@@ -14,6 +13,7 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.1
 	github.com/tencent-connect/botgo v0.2.1
+	github.com/zalando/go-keyring v0.2.3
 	go.mau.fi/whatsmeow v0.0.0-20260211193157-7b33f6289f98
 	golang.org/x/oauth2 v0.35.0
 	google.golang.org/protobuf v1.36.11
@@ -22,11 +22,14 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/alessio/shellescape v1.4.1 // indirect
 	github.com/beeper/argo-go v1.1.2 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
+	github.com/danieljoos/wincred v1.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/go-resty/resty/v2 v2.17.1 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect

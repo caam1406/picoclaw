@@ -22,28 +22,14 @@ go build -o picoclaw.exe ./cmd/picoclaw/
 .\picoclaw.exe onboard
 ```
 
-Isso cria o arquivo `C:\Users\Administrator\.picoclaw\config.json` com valores padrao.
+Isso inicializa o banco de configuracao (`C:\Users\Administrator\.picoclaw\picoclaw.db`) e gera um token do dashboard no terminal.
 
-## Passo 3: Editar o config.json
+## Passo 3: Configurar no dashboard
 
-Abra `C:\Users\Administrator\.picoclaw\config.json` e habilite o WhatsApp:
-
-```json
-{
-  "channels": {
-    "whatsapp": {
-      "enabled": true,
-      "store_path": "~/.picoclaw/whatsapp.db",
-      "allow_from": ["5511999999999"]
-    }
-  },
-  "providers": {
-    "openrouter": {
-      "api_key": "sk-or-v1-SUA_CHAVE_AQUI"
-    }
-  }
-}
-```
+1. Abra o dashboard em `http://127.0.0.1:18791` (ou host/porta configurados).
+2. Use o token exibido no terminal para fazer login.
+3. Em **Canais â†’ WhatsApp**, habilite o canal e ajuste `store_path` e `allow_from`.
+4. Em **Providers**, configure a API key (ex.: OpenRouter) para o LLM.
 
 ### Campos do WhatsApp
 
@@ -187,7 +173,7 @@ Pressione `Ctrl+C` no terminal:
 
 ### QR nao aparece
 
-- Verifique se `whatsapp.enabled` esta `true` no config.json
+- Verifique se `whatsapp.enabled` esta `true` no dashboard (Canais → WhatsApp)
 
 ### "No API key configured"
 

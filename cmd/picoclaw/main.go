@@ -28,6 +28,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/heartbeat"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/sipeed/picoclaw/pkg/session"
 	"github.com/sipeed/picoclaw/pkg/skills"
 	"github.com/sipeed/picoclaw/pkg/tools"
 	"github.com/sipeed/picoclaw/pkg/voice"
@@ -106,7 +107,7 @@ func main() {
 		workspace := cfg.WorkspacePath()
 		installer := skills.NewSkillInstaller(workspace)
 		// 获取全局配置目录和内置 skills 目录
-		globalDir := filepath.Dir(getConfigPath())
+		globalDir := getConfigDir()
 		globalSkillsDir := filepath.Join(globalDir, "skills")
 		builtinSkillsDir := filepath.Join(globalDir, "picoclaw", "skills")
 		skillsLoader := skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir)
@@ -162,11 +163,13 @@ func printHelp() {
 }
 
 func onboard() {
-	configPath := getConfigPath()
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config store: %v\n", err)
+		os.Exit(1)
+	}
 
-	var cfg *config.Config
-
-	if _, err := os.Stat(configPath); err == nil {
+	/* if _, err := os.Stat(configPath); err == nil {
 		// Config already exists - load it and only overwrite if user confirms
 		fmt.Printf("Config already exists at %s\n", configPath)
 		fmt.Print("Overwrite config? (y/n): ")
@@ -197,7 +200,7 @@ func onboard() {
 			os.Exit(1)
 		}
 		fmt.Println("✓ Config created at", configPath)
-	}
+	*/
 
 	// Always ensure workspace and templates exist
 	workspace := cfg.WorkspacePath()
@@ -207,11 +210,26 @@ func onboard() {
 
 	createWorkspaceTemplates(workspace)
 
+	token, generated, err := cfg.EnsureDashboardToken()
+	if err != nil {
+		fmt.Printf("Error ensuring dashboard token: %v\n", err)
+		os.Exit(1)
+	}
+	if generated {
+		if err := cfg.Save(); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	fmt.Printf("%s picoclaw is ready!\n", logo)
 	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Add your API key to", configPath)
-	fmt.Println("     Get one at: https://openrouter.ai/keys")
-	fmt.Println("  2. Chat: picoclaw agent -m \"Hello!\"")
+	fmt.Printf("  1. Open dashboard: http://%s:%d\n", cfg.Dashboard.Host, cfg.Dashboard.Port)
+	if generated {
+		fmt.Printf("     Token: %s\n", token)
+	}
+	fmt.Println("  2. Configure providers, channels, and storage in the dashboard")
+	fmt.Println("  3. Chat: picoclaw agent -m \"Hello!\"")
 }
 
 func createWorkspaceTemplates(workspace string) {
@@ -410,6 +428,19 @@ func agentCmd() {
 		os.Exit(1)
 	}
 
+	token, generated, err := cfg.EnsureDashboardToken()
+	if err != nil {
+		fmt.Printf("Error ensuring dashboard token: %v\n", err)
+		os.Exit(1)
+	}
+	if generated {
+		if err := cfg.Save(); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("✅ Dashboard token generated: %s\n", token)
+	}
+
 	provider, err := providers.CreateProvider(cfg)
 	if err != nil {
 		fmt.Printf("Error creating provider: %v\n", err)
@@ -547,6 +578,13 @@ func gatewayCmd() {
 
 	provider, err := providers.CreateProvider(cfg)
 	if err != nil {
+		// Quando não há API key configurada, iniciamos em modo apenas-dashboard
+		if strings.Contains(err.Error(), "no API key configured") {
+			fmt.Printf("⚠ %v\n", err)
+			fmt.Println("Starting gateway in dashboard-only mode. Configure your API keys in the dashboard, then restart gateway.")
+			startDashboardOnly(cfg)
+			return
+		}
 		fmt.Printf("Error creating provider: %v\n", err)
 		os.Exit(1)
 	}
@@ -646,7 +684,7 @@ func gatewayCmd() {
 
 	// Start dashboard if enabled
 	var dashboardServer *dashboard.Server
-	if cfg.Dashboard.Enabled && cfg.Dashboard.Token != "" {
+	if cfg.Dashboard.Enabled {
 		contactsStore := contacts.NewStore(cfg.WorkspacePath())
 		agentLoop.SetContactsStore(contactsStore, cfg.Dashboard.ContactsOnly)
 
@@ -682,6 +720,70 @@ func gatewayCmd() {
 	fmt.Println("✓ Gateway stopped")
 }
 
+// startDashboardOnly inicia apenas o dashboard (sem agente/LLM),
+// permitindo configurar chaves e demais parâmetros via UI antes de ligar o gateway completo.
+func startDashboardOnly(cfg *config.Config) {
+	msgBus := bus.NewMessageBus()
+
+	token, generated, err := cfg.EnsureDashboardToken()
+	if err != nil {
+		fmt.Printf("Error ensuring dashboard token: %v\n", err)
+		os.Exit(1)
+	}
+	if generated {
+		if err := cfg.Save(); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("✅ Dashboard token generated: %s\n", token)
+	}
+
+	// Session manager independente, apenas para o dashboard listar sessões
+	sessionsManager := session.NewSessionManager(filepath.Join(cfg.WorkspacePath(), "sessions"))
+
+	// Channel manager é criado, mas os canais não são iniciados nesse modo
+	channelManager, err := channels.NewManager(cfg, msgBus)
+	if err != nil {
+		fmt.Printf("Error creating channel manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	contactsStore := contacts.NewStore(cfg.WorkspacePath())
+
+	if !cfg.Dashboard.Enabled {
+		fmt.Println("Dashboard is disabled in config. Enable it (dashboard.enabled=true) to use dashboard-only mode.")
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dashboardServer := dashboard.NewServer(
+		cfg.Dashboard,
+		cfg,
+		channelManager,
+		sessionsManager,
+		contactsStore,
+		msgBus,
+	)
+
+	if err := dashboardServer.Start(ctx); err != nil {
+		fmt.Printf("Error starting dashboard: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✓ Dashboard (LLM not configured) started on http://%s:%d\n", cfg.Dashboard.Host, cfg.Dashboard.Port)
+	fmt.Println("Configure your API keys and other settings, then restart picoclaw gateway.")
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+	<-sigChan
+
+	fmt.Println("\nShutting down dashboard...")
+	dashboardServer.Stop()
+	fmt.Println("✓ Dashboard stopped")
+}
+
 func statusCmd() {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -689,7 +791,7 @@ func statusCmd() {
 		return
 	}
 
-	configPath := getConfigPath()
+	configPath := getConfigDBPath()
 
 	fmt.Printf("%s picoclaw Status\n\n", logo)
 
@@ -739,9 +841,12 @@ func statusCmd() {
 	}
 }
 
-func getConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".picoclaw", "config.json")
+func getConfigDBPath() string {
+	return config.DefaultConfigDBPath()
+}
+
+func getConfigDir() string {
+	return filepath.Dir(getConfigDBPath())
 }
 
 func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace string) *cron.CronService {
@@ -764,7 +869,7 @@ func setupCronTool(agentLoop *agent.AgentLoop, msgBus *bus.MessageBus, workspace
 }
 
 func loadConfig() (*config.Config, error) {
-	return config.LoadConfig(getConfigPath())
+	return config.LoadConfig(getConfigDBPath())
 }
 
 func cronCmd() {
@@ -998,7 +1103,7 @@ func skillsCmd() {
 	workspace := cfg.WorkspacePath()
 	installer := skills.NewSkillInstaller(workspace)
 	// 获取全局配置目录和内置 skills 目录
-	globalDir := filepath.Dir(getConfigPath())
+	globalDir := getConfigDir()
 	globalSkillsDir := filepath.Join(globalDir, "skills")
 	builtinSkillsDir := filepath.Join(globalDir, "picoclaw", "skills")
 	skillsLoader := skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/storage"
 )
@@ -223,10 +224,12 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Auth via query param for WebSocket
-	token := r.URL.Query().Get("token")
-	if token != s.config.Token {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-		return
+	if s.config.Token != "" {
+		token := r.URL.Query().Get("token")
+		if token != s.config.Token {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
 	}
 
 	s.hub.handleWebSocket(w, r)
@@ -235,6 +238,44 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.cfg.Clone()
+		config.ClearSecrets(cfg)
+		secrets := config.SecretMaskMap(s.cfg)
+		writeJSON(w, map[string]interface{}{
+			"config":  cfg,
+			"secrets": secrets,
+		})
+	case http.MethodPut:
+		var body struct {
+			Config  config.Config     `json:"config"`
+			Secrets map[string]string `json:"secrets"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+			return
+		}
+
+		s.cfg.ApplyUpdate(&body.Config, body.Secrets)
+		if err := s.cfg.Save(); err != nil {
+			http.Error(w, `{"error":"failed to save config: `+err.Error()+`"}`, http.StatusInternalServerError)
+			return
+		}
+
+		// Update runtime auth token for immediate use
+		s.config = s.cfg.Dashboard
+
+		writeJSON(w, map[string]string{
+			"status":  "updated",
+			"message": "Configuration updated. Restart required for changes to take effect.",
+		})
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
 }
 
 // handleGetStorageConfig returns the current storage configuration (with password masked)

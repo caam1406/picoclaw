@@ -1,13 +1,9 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
-
-	"github.com/caarlos0/env/v11"
 )
 
 type Config struct {
@@ -19,7 +15,7 @@ type Config struct {
 	Dashboard DashboardConfig `json:"dashboard"`
 	Storage   StorageConfig   `json:"storage"`
 	mu        sync.RWMutex
-	filePath  string // Store path for Save() method
+	storePath string // DB path for Save() method
 }
 
 type DashboardConfig struct {
@@ -219,7 +215,7 @@ func DefaultConfig() *Config {
 			},
 		},
 		Dashboard: DashboardConfig{
-			Enabled:      false,
+			Enabled:      true,
 			Host:         "127.0.0.1",
 			Port:         18791,
 			Token:        "",
@@ -235,51 +231,29 @@ func DefaultConfig() *Config {
 }
 
 func LoadConfig(path string) (*Config, error) {
-	cfg := DefaultConfig()
-	cfg.filePath = path // Store path for later Save() calls
-
-	data, err := os.ReadFile(path)
+	if path == "" {
+		path = DefaultConfigDBPath()
+	}
+	cfg, err := loadConfigFromStore(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return cfg, nil
-		}
 		return nil, err
 	}
-
-	if err := json.Unmarshal(data, cfg); err != nil {
-		return nil, err
-	}
-
-	if err := env.Parse(cfg); err != nil {
-		return nil, err
-	}
-
+	cfg.storePath = path
 	return cfg, nil
 }
 
 func SaveConfig(path string, cfg *Config) error {
 	cfg.mu.RLock()
 	defer cfg.mu.RUnlock()
-
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	return os.WriteFile(path, data, 0644)
+	return saveConfigToStore(path, cfg)
 }
 
 // Save saves the configuration to the file it was loaded from.
 func (c *Config) Save() error {
-	if c.filePath == "" {
-		return fmt.Errorf("config file path not set")
+	if c.storePath == "" {
+		return fmt.Errorf("config store path not set")
 	}
-	return SaveConfig(c.filePath, c)
+	return SaveConfig(c.storePath, c)
 }
 
 func (c *Config) WorkspacePath() string {

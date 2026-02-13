@@ -18,7 +18,7 @@ func migrateDataCommand() {
 	fmt.Println()
 
 	// Load configuration
-	configPath := getConfigPath()
+	configPath := getConfigDBPath()
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		fmt.Printf("❌ Error loading config: %v\n", err)
@@ -129,7 +129,7 @@ func migrateDataCommand() {
 	fmt.Println("✅ Migration completed successfully!")
 	fmt.Println()
 	fmt.Println("⚠️  Remember to:")
-	fmt.Printf("   1. Update storage.type to '%s' in config.json\n", destType)
+	fmt.Printf("   1. Update storage.type to '%s' in the dashboard settings\n", destType)
 	fmt.Println("   2. Restart PicoClaw for changes to take effect")
 }
 
@@ -215,7 +215,7 @@ func exportDataCommand(outputDir string) {
 	fmt.Println()
 
 	// Load configuration
-	configPath := getConfigPath()
+	configPath := getConfigDBPath()
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		fmt.Printf("❌ Error loading config: %v\n", err)
