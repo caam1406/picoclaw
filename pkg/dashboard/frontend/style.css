@@ -209,6 +209,11 @@ body {
   margin-left: auto;
 }
 
+.contact-tag.group-tag {
+  background: var(--primary);
+  color: var(--bg);
+}
+
 .btn-add {
   display: block;
   width: calc(100% - 16px);

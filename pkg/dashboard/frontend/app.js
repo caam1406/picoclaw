@@ -233,8 +233,11 @@ function loadContacts() {
 
     list.innerHTML = data.map(c => {
       const label = c.display_name || c.contact_id;
+      const isGroup = (c.contact_id && c.contact_id.includes('@g.us'));
+      const groupTag = isGroup ? '<span class="contact-tag group-tag">Grupo</span>' : '';
       return `<div class="sidebar-item" onclick="editContact('${escapeAttr(c.channel)}','${escapeAttr(c.contact_id)}')">
         <span>${escapeHtml(label)}</span>
+        ${groupTag}
         <span class="contact-tag">${c.channel}</span>
       </div>`;
     }).join('');
@@ -261,8 +264,9 @@ function editContact(channel, id) {
     document.getElementById('contact-id').value = data.contact_id;
     document.getElementById('contact-name').value = data.display_name || '';
     document.getElementById('contact-instructions').value = data.instructions || '';
+    const isGroup = (data.contact_id && data.contact_id.includes('@g.us'));
     document.getElementById('contact-title').textContent = data.display_name || data.contact_id;
-    document.getElementById('contact-subtitle').textContent = data.channel + ' / ' + data.contact_id;
+    document.getElementById('contact-subtitle').textContent = data.channel + ' / ' + data.contact_id + (isGroup ? ' (grupo)' : '');
     document.getElementById('contact-avatar').textContent = (data.display_name || data.contact_id).charAt(0).toUpperCase();
     document.getElementById('btn-delete-contact').style.display = 'inline-block';
 
@@ -331,8 +335,9 @@ function createContact() {
     document.getElementById('contact-id').disabled = true;
     document.getElementById('contact-name').value = name;
     document.getElementById('contact-instructions').value = '';
+    const isGroup = id.includes('@g.us');
     document.getElementById('contact-title').textContent = name || id;
-    document.getElementById('contact-subtitle').textContent = channel + ' / ' + id;
+    document.getElementById('contact-subtitle').textContent = channel + ' / ' + id + (isGroup ? ' (grupo)' : '');
     document.getElementById('contact-avatar').textContent = (name || id).charAt(0).toUpperCase();
     document.getElementById('btn-delete-contact').style.display = 'inline-block';
     showView('contact');

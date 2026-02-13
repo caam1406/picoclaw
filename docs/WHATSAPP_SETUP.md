@@ -135,6 +135,19 @@ Adicione o numero vinculado a um grupo e envie uma mensagem. No log:
 [INFO] [whatsapp] Message received {sender: 5511..., chat: 120363...@g.us, is_group: true}
 ```
 
+### Agente personalizado para grupos
+
+Voce pode definir instrucoes especificas por grupo (ex.: "Responda como moderador", "Use tom informal"). No dashboard:
+
+1. Va em **Contatos** > **+ Novo Contato ou Grupo**.
+2. Canal: **WhatsApp**.
+3. **ID do Contato ou Grupo**: use o ID do grupo, que termina em `@g.us` (ex.: `120363123456789012@g.us`).
+4. Para descobrir o ID do grupo: envie qualquer mensagem no grupo e, no dashboard, abra **Visao Geral** > **Sessoes recentes**. A chave da sessao sera `whatsapp:120363...@g.us`; o trecho apos `whatsapp:` e o ID do grupo.
+5. Preencha o nome (ex.: "Grupo Familia") e as **Instrucoes personalizadas**.
+6. Clique em **Criar**. Mensagens desse grupo passam a usar essas instrucoes.
+
+Contatos com ID terminando em `@g.us` aparecem com a tag **Grupo** na lista.
+
 ## Passo 7: Parar o Gateway
 
 Pressione `Ctrl+C` no terminal:
