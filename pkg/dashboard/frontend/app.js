@@ -7,6 +7,7 @@ let currentDefault = null; // channel key of default being edited
 let currentConfig = null;
 let currentSecrets = {};
 let liveMessages = [];
+let qrState = null;
 const MAX_LIVE_MESSAGES = 200;
 
 // ─── Init ───────────────────────────────────────────────────────────
@@ -51,6 +52,8 @@ function enterDashboard() {
   loadChannels();
   loadContacts();
   loadDefaults();
+  checkPendingQR();
+  checkSetupStatus();
 }
 
 // ─── API Helper ─────────────────────────────────────────────────────
@@ -96,6 +99,12 @@ function connectWebSocket() {
 }
 
 function handleBusEvent(event) {
+  // Handle QR code events
+  if (event.type === 'qr_code' && event.qr_code) {
+    handleQREvent(event.qr_code);
+    return;
+  }
+
   const time = new Date(event.time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   let channel = '', sender = '', content = '';
 
@@ -182,15 +191,26 @@ function loadChannels() {
     const list = document.getElementById('channels-list');
     if (!data || Object.keys(data).length === 0) {
       list.innerHTML = '<div style="color:var(--text-muted);padding:8px 12px;font-size:13px">Nenhum canal</div>';
+      updateSidebarQR('disconnected');
       return;
+    }
+
+    // Update sidebar WhatsApp connection status
+    const wa = data['whatsapp'];
+    if (wa) {
+      updateSidebarQR(wa.running ? 'connected' : (qrState ? 'pending' : 'disconnected'));
+    } else {
+      updateSidebarQR('disconnected');
     }
 
     list.innerHTML = Object.entries(data).map(([name, info]) => {
       const dotClass = info.running ? 'running' : '';
-      return `<div class="sidebar-item">
+      const clickAction = name === 'whatsapp' && !info.running ? `onclick="showView('qr')"` : '';
+      const statusLabel = info.running ? 'ativo' : (name === 'whatsapp' ? 'aguardando' : 'parado');
+      return `<div class="sidebar-item" ${clickAction}>
         <span class="channel-dot ${dotClass}"></span>
         <span>${capitalize(name)}</span>
-        <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${info.running ? 'ativo' : 'parado'}</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${statusLabel}</span>
       </div>`;
     }).join('');
   }).catch(() => {});
@@ -877,6 +897,227 @@ document.addEventListener('DOMContentLoaded', () => {
     storageTypeSelect.addEventListener('change', toggleStorageFields);
   }
 });
+
+// ─── QR Code ─────────────────────────────────────────────────────────
+function handleQREvent(qr) {
+  qrState = qr;
+
+  const container = document.getElementById('qr-image');
+  const status = document.getElementById('qr-status');
+  const instructions = document.getElementById('qr-instructions');
+  const actions = document.getElementById('qr-actions');
+  const btn = document.getElementById('btn-request-qr');
+
+  if (!container) return;
+
+  // Stop polling if active
+  if (qrPollTimer) { clearTimeout(qrPollTimer); qrPollTimer = null; }
+
+  switch (qr.event) {
+    case 'code':
+      container.innerHTML = qr.svg || '';
+      status.innerHTML = '<div class="qr-scan-prompt">Escaneie o QR Code</div>';
+      instructions.style.display = 'block';
+      if (actions) actions.style.display = 'none';
+      updateSidebarQR('pending');
+      showView('qr');
+      break;
+
+    case 'success':
+      container.innerHTML = '';
+      status.innerHTML = '<div class="qr-success">WhatsApp conectado com sucesso!</div>';
+      instructions.style.display = 'none';
+      if (actions) actions.style.display = 'none';
+      qrState = null;
+      updateSidebarQR('connected');
+      toast('WhatsApp conectado');
+      setTimeout(() => {
+        loadChannels();
+        loadOverview();
+      }, 1000);
+      break;
+
+    case 'timeout':
+      container.innerHTML = '';
+      status.innerHTML = '<div class="qr-error">QR code expirado. Clique abaixo para tentar novamente.</div>';
+      instructions.style.display = 'none';
+      if (actions) actions.style.display = 'block';
+      if (btn) { btn.disabled = false; btn.textContent = 'Tentar Novamente'; }
+      qrState = null;
+      updateSidebarQR('error');
+      toast('QR code expirou', true);
+      break;
+
+    case 'error':
+      container.innerHTML = '';
+      status.innerHTML = '<div class="qr-error">Erro na autenticacao. Clique abaixo para tentar novamente.</div>';
+      instructions.style.display = 'none';
+      if (actions) actions.style.display = 'block';
+      if (btn) { btn.disabled = false; btn.textContent = 'Tentar Novamente'; }
+      qrState = null;
+      updateSidebarQR('error');
+      toast('Erro na autenticacao WhatsApp', true);
+      break;
+  }
+}
+
+function updateSidebarQR(state) {
+  const dot = document.getElementById('sidebar-qr-dot');
+  const label = document.getElementById('sidebar-qr-status');
+  if (!dot || !label) return;
+
+  dot.className = 'channel-dot';
+  switch (state) {
+    case 'connected':
+      dot.classList.add('running');
+      label.textContent = 'conectado';
+      break;
+    case 'pending':
+      label.textContent = 'QR pendente';
+      break;
+    case 'error':
+      label.textContent = 'erro';
+      break;
+    default:
+      label.textContent = 'desconectado';
+  }
+}
+
+function checkPendingQR() {
+  // Check if there's a pending QR code
+  apiFetch('/api/v1/whatsapp/qr').then(data => {
+    if (data && data.event === 'code' && data.svg) {
+      handleQREvent(data);
+      return;
+    }
+
+    // No pending QR - check channel status to see if already connected
+    apiFetch('/api/v1/channels').then(channels => {
+      const wa = channels && channels['whatsapp'];
+      if (wa && wa.running) {
+        // Already connected
+        const status = document.getElementById('qr-status');
+        const actions = document.getElementById('qr-actions');
+        if (status) status.innerHTML = '<div class="qr-success">WhatsApp conectado!</div>';
+        if (actions) actions.style.display = 'none';
+        updateSidebarQR('connected');
+      } else {
+        // Not connected, show button
+        const actions = document.getElementById('qr-actions');
+        if (actions) actions.style.display = 'block';
+        updateSidebarQR(wa ? 'disconnected' : 'disconnected');
+      }
+    }).catch(() => {});
+  }).catch(() => {});
+}
+
+function requestWhatsAppQR() {
+  const btn = document.getElementById('btn-request-qr');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Conectando...';
+  }
+
+  const status = document.getElementById('qr-status');
+  if (status) {
+    status.innerHTML = '<div class="qr-waiting">Iniciando WhatsApp... aguarde o QR code</div>';
+  }
+
+  apiFetch('/api/v1/whatsapp/connect', { method: 'POST' }).then(data => {
+    if (data.success) {
+      // Start polling for QR code
+      pollForQR(0);
+    } else {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Conectar WhatsApp';
+      }
+      if (data.error && data.error.includes('already connected')) {
+        if (status) status.innerHTML = '<div class="qr-success">WhatsApp ja esta conectado!</div>';
+        updateSidebarQR('connected');
+        if (btn) btn.style.display = 'none';
+      } else {
+        toast('Erro: ' + (data.error || 'Falha ao conectar'), true);
+        if (status) status.innerHTML = '<div class="qr-error">Erro ao conectar. Tente novamente.</div>';
+      }
+    }
+  }).catch(err => {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Conectar WhatsApp';
+    }
+    toast('Erro ao solicitar conexao', true);
+  });
+}
+
+let qrPollTimer = null;
+function pollForQR(attempt) {
+  if (attempt > 30) {
+    const btn = document.getElementById('btn-request-qr');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Tentar Novamente';
+    }
+    const status = document.getElementById('qr-status');
+    if (status) status.innerHTML = '<div class="qr-error">Tempo esgotado. Tente novamente.</div>';
+    return;
+  }
+
+  if (qrPollTimer) clearTimeout(qrPollTimer);
+
+  qrPollTimer = setTimeout(() => {
+    apiFetch('/api/v1/whatsapp/qr').then(data => {
+      if (data && data.event === 'code' && data.svg) {
+        handleQREvent(data);
+      } else {
+        pollForQR(attempt + 1);
+      }
+    }).catch(() => {
+      pollForQR(attempt + 1);
+    });
+  }, 1000);
+}
+
+// ─── Setup Status ────────────────────────────────────────────────────
+function checkSetupStatus() {
+  apiFetch('/api/v1/status').then(data => {
+    const container = document.getElementById('setup-alerts');
+    if (!container) return;
+
+    const setup = data.setup;
+    if (!setup || !setup.issues || setup.issues.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+
+    const icons = {
+      error: '⚠',
+      warning: '💡'
+    };
+
+    const actionLabels = {
+      settings: 'Configurar'
+    };
+
+    container.innerHTML = setup.issues.map(issue => {
+      const icon = icons[issue.type] || '📋';
+      const actionBtn = issue.action
+        ? `<div class="setup-alert-action"><button class="btn-alert-action" onclick="showView('${issue.action}')">${actionLabels[issue.action] || 'Abrir'}</button></div>`
+        : '';
+
+      return `<div class="setup-alert ${issue.type}">
+        <div class="setup-alert-icon">${icon}</div>
+        <div class="setup-alert-content">
+          <div class="setup-alert-title">${escapeHtml(issue.title)}</div>
+          <div class="setup-alert-message">${escapeHtml(issue.message)}</div>
+        </div>
+        ${actionBtn}
+      </div>`;
+    }).join('');
+
+    container.style.display = 'flex';
+  }).catch(() => {});
+}
 
 // Handle Enter key on login
 document.addEventListener('keydown', (e) => {

@@ -281,6 +281,49 @@ func (m *Manager) UnregisterChannel(name string) {
 	delete(m.channels, name)
 }
 
+// StartWhatsApp initializes and starts the WhatsApp channel on demand.
+// If the channel is already running, it stops and restarts it to trigger a new QR code.
+func (m *Manager) StartWhatsApp(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// If already exists and running, stop it first to force re-auth
+	if ch, exists := m.channels["whatsapp"]; exists {
+		if ch.IsRunning() {
+			return fmt.Errorf("whatsapp already connected")
+		}
+		// Not running – stop cleanly and re-create
+		ch.Stop(ctx)
+		delete(m.channels, "whatsapp")
+	}
+
+	// Create a new WhatsApp channel instance
+	whatsapp, err := NewWhatsAppChannel(m.config.Channels.WhatsApp, m.bus)
+	if err != nil {
+		return fmt.Errorf("failed to create whatsapp channel: %w", err)
+	}
+	m.channels["whatsapp"] = whatsapp
+
+	// Ensure outbound dispatcher is running
+	if m.dispatchTask == nil {
+		dispatchCtx, cancel := context.WithCancel(ctx)
+		m.dispatchTask = &asyncTask{cancel: cancel}
+		go m.dispatchOutbound(dispatchCtx)
+	}
+
+	// Start in a goroutine so loginWithQR doesn't block the API response
+	go func() {
+		logger.InfoC("channels", "Starting WhatsApp channel on demand")
+		if err := whatsapp.Start(ctx); err != nil {
+			logger.ErrorCF("channels", "Failed to start WhatsApp channel", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}()
+
+	return nil
+}
+
 func (m *Manager) SendToChannel(ctx context.Context, channelName, chatID, content string) error {
 	m.mu.RLock()
 	channel, exists := m.channels[channelName]

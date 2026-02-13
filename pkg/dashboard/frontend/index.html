@@ -50,6 +50,14 @@
       <button class="btn-add" onclick="showAddDefault()">+ Nova Instrucao</button>
     </div>
     <div class="sidebar-section">
+      <div class="sidebar-label">Conexao</div>
+      <div class="sidebar-item" onclick="showView('qr')" id="sidebar-qr-item">
+        <span class="channel-dot" id="sidebar-qr-dot"></span>
+        <span>WhatsApp</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--text-muted)" id="sidebar-qr-status">verificando...</span>
+      </div>
+    </div>
+    <div class="sidebar-section">
       <div class="sidebar-label">Monitoramento</div>
       <div class="sidebar-item" onclick="showView('live')">Mensagens Live</div>
     </div>
@@ -61,6 +69,9 @@
 
   <!-- Main Content Area -->
   <div class="main">
+
+    <!-- Setup Alerts Banner -->
+    <div id="setup-alerts" class="setup-alerts" style="display:none"></div>
 
     <!-- Overview View -->
     <div id="view-overview" class="view active">
@@ -118,6 +129,27 @@
         <div class="card-title">Mensagens em Tempo Real</div>
         <div class="messages-stream" id="live-messages">
           <div style="color:var(--text-muted);padding:20px;text-align:center">Aguardando mensagens...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WhatsApp QR Code View -->
+    <div id="view-qr" class="view">
+      <div class="card">
+        <div class="card-title">Conexao WhatsApp</div>
+        <div class="qr-container">
+          <div id="qr-status" class="qr-status">
+            <div class="qr-waiting">Clique abaixo para conectar o WhatsApp</div>
+          </div>
+          <div id="qr-image" class="qr-image"></div>
+          <div id="qr-instructions" class="qr-instructions" style="display:none">
+            <p>1. Abra o WhatsApp no seu celular</p>
+            <p>2. Toque em <strong>Dispositivos Conectados</strong></p>
+            <p>3. Escaneie o codigo QR acima</p>
+          </div>
+          <div id="qr-actions" class="qr-actions">
+            <button class="btn btn-primary btn-connect" id="btn-request-qr" onclick="requestWhatsAppQR()">Conectar WhatsApp</button>
+          </div>
         </div>
       </div>
     </div>

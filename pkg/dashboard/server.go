@@ -32,6 +32,7 @@ type Server struct {
 	httpServer     *http.Server
 	startTime      time.Time
 	storageFactory StorageFactory
+	dashboardOnly  bool // true when running without LLM configured
 }
 
 func NewServer(
@@ -61,6 +62,11 @@ func NewServer(
 	}
 }
 
+// SetDashboardOnly marks this server as running in dashboard-only mode (no LLM).
+func (s *Server) SetDashboardOnly(v bool) {
+	s.dashboardOnly = v
+}
+
 func (s *Server) Start(ctx context.Context) error {
 	s.startTime = time.Now()
 
@@ -87,6 +93,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/v1/config/storage", s.authMiddleware(s.handleGetStorageConfig))
 	mux.HandleFunc("/api/v1/config/storage/update", s.authMiddleware(s.handleUpdateStorageConfig))
 	mux.HandleFunc("/api/v1/config/storage/test", s.authMiddleware(s.handleTestStorageConnection))
+
+	// WhatsApp QR code endpoints
+	mux.HandleFunc("/api/v1/whatsapp/qr", s.authMiddleware(s.handleWhatsAppQR))
+	mux.HandleFunc("/api/v1/whatsapp/connect", s.authMiddleware(s.handleWhatsAppConnect))
 
 	// WebSocket (auth via query param)
 	mux.HandleFunc("/ws", s.handleWebSocket)

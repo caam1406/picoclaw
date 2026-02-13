@@ -8,10 +8,11 @@ import (
 
 // BusEvent represents an observed message event for dashboard streaming.
 type BusEvent struct {
-	Type     string          `json:"type"` // "inbound" or "outbound"
-	Inbound  *InboundMessage `json:"inbound,omitempty"`
+	Type     string           `json:"type"` // "inbound", "outbound", or "qr_code"
+	Inbound  *InboundMessage  `json:"inbound,omitempty"`
 	Outbound *OutboundMessage `json:"outbound,omitempty"`
-	Time     time.Time       `json:"time"`
+	QRCode   *QRCodeEvent     `json:"qr_code,omitempty"`
+	Time     time.Time        `json:"time"`
 }
 
 type MessageBus struct {
@@ -90,6 +91,14 @@ func (mb *MessageBus) PublishOutbound(msg OutboundMessage) {
 		Type:     "outbound",
 		Outbound: &msg,
 		Time:     time.Now(),
+	})
+}
+
+func (mb *MessageBus) PublishQRCode(event QRCodeEvent) {
+	mb.notifyObservers(BusEvent{
+		Type:   "qr_code",
+		QRCode: &event,
+		Time:   time.Now(),
 	})
 }
 

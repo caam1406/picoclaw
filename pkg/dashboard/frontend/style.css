@@ -595,3 +595,192 @@ body {
 .config-details[open] summary {
   margin-bottom: 16px;
 }
+
+/* QR Code Display */
+.qr-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
+.qr-image {
+  margin: 20px 0;
+  background: #fff;
+  padding: 16px;
+  border-radius: var(--radius);
+  display: inline-block;
+}
+
+.qr-image:empty {
+  display: none;
+}
+
+.qr-image svg {
+  display: block;
+  width: 256px;
+  height: 256px;
+}
+
+.qr-status {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.qr-scan-prompt {
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.qr-success {
+  color: var(--success);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.qr-error {
+  color: var(--danger);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.qr-waiting {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.qr-instructions {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 2;
+}
+
+.qr-instructions strong {
+  color: var(--text);
+}
+
+.qr-actions {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.btn-connect {
+  padding: 14px 32px;
+  font-size: 16px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.btn-connect:hover {
+  background: var(--accent-hover);
+}
+
+.btn-connect:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ─── Setup Alerts ─────────────────────────────────────────────── */
+.setup-alerts {
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.setup-alert {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.5;
+  animation: alert-slide-in 0.3s ease;
+}
+
+.setup-alert.error {
+  background: rgba(225, 112, 85, 0.12);
+  border: 1px solid rgba(225, 112, 85, 0.3);
+  color: #f0b0a0;
+}
+
+.setup-alert.warning {
+  background: rgba(253, 203, 110, 0.10);
+  border: 1px solid rgba(253, 203, 110, 0.25);
+  color: #f5dfa0;
+}
+
+.setup-alert-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.setup-alert-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.setup-alert-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.setup-alert.error .setup-alert-title { color: var(--danger); }
+.setup-alert.warning .setup-alert-title { color: var(--warning); }
+
+.setup-alert-message {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.setup-alert-action {
+  flex-shrink: 0;
+}
+
+.btn-alert-action {
+  padding: 6px 16px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-alert-action:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+@keyframes alert-slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.qr-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  margin-left: 4px;
+  cursor: pointer;
+  animation: qr-pulse 2s infinite;
+}
+
+@keyframes qr-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

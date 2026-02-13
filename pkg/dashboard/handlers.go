@@ -18,13 +18,76 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mode := "full"
+	if s.dashboardOnly {
+		mode = "dashboard_only"
+	}
+
+	// Build setup diagnostics
+	setup := s.buildSetupDiagnostics()
+
 	status := map[string]interface{}{
 		"version":  "0.1.0",
 		"uptime":   time.Since(s.startTime).String(),
 		"channels": s.channelManager.GetStatus(),
+		"mode":     mode,
+		"setup":    setup,
 	}
 
 	writeJSON(w, status)
+}
+
+// buildSetupDiagnostics checks what's configured and what's missing.
+func (s *Server) buildSetupDiagnostics() map[string]interface{} {
+	issues := []map[string]string{}
+
+	// Check LLM provider using the thread-safe GetAPIKey method
+	llmConfigured := s.cfg != nil && s.cfg.GetAPIKey() != ""
+
+	if !llmConfigured {
+		issues = append(issues, map[string]string{
+			"type":    "error",
+			"key":     "llm_not_configured",
+			"title":   "LLM nao configurada",
+			"message": "Nenhuma API key de provedor esta configurada. O agente nao podera responder mensagens. Va em Configuracoes > Provedores e adicione pelo menos uma API key.",
+			"action":  "settings",
+		})
+	}
+
+	// Check if model is set
+	modelSet := false
+	if s.cfg != nil {
+		cloned := s.cfg.Clone()
+		modelSet = cloned.Agents.Defaults.Model != ""
+	}
+	if !modelSet {
+		issues = append(issues, map[string]string{
+			"type":    "warning",
+			"key":     "model_not_set",
+			"title":   "Modelo nao definido",
+			"message": "Nenhum modelo padrao esta configurado. Va em Configuracoes > Agente e defina um modelo.",
+			"action":  "settings",
+		})
+	}
+
+	// Check if any channel is enabled
+	channelCount := len(s.channelManager.GetEnabledChannels())
+	if channelCount == 0 {
+		issues = append(issues, map[string]string{
+			"type":    "warning",
+			"key":     "no_channels",
+			"title":   "Nenhum canal habilitado",
+			"message": "Nenhum canal de comunicacao esta habilitado. Va em Configuracoes > Canais e habilite pelo menos um (ex: WhatsApp).",
+			"action":  "settings",
+		})
+	}
+
+	return map[string]interface{}{
+		"llm_configured": llmConfigured,
+		"channel_count":  channelCount,
+		"issues":         issues,
+		"ready":          len(issues) == 0,
+	}
 }
 
 func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
@@ -418,4 +481,43 @@ func maskDatabaseURL(url string) string {
 	}
 
 	return url
+}
+
+func (s *Server) handleWhatsAppQR(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	qr := s.hub.GetLatestQR()
+	if qr == nil {
+		writeJSON(w, map[string]interface{}{
+			"status":  "no_qr",
+			"message": "No QR code pending",
+		})
+		return
+	}
+
+	writeJSON(w, qr)
+}
+
+// handleWhatsAppConnect starts the WhatsApp channel on demand and triggers QR code generation.
+func (s *Server) handleWhatsAppConnect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := s.channelManager.StartWhatsApp(r.Context()); err != nil {
+		writeJSON(w, map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"success": true,
+		"message": "WhatsApp connection started. QR code will appear shortly.",
+	})
 }

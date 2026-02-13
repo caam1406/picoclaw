@@ -35,6 +35,8 @@ type Hub struct {
 	broadcast  chan []byte
 	msgBus     *bus.MessageBus
 	mu         sync.RWMutex
+	latestQR   *bus.QRCodeEvent
+	qrMu       sync.RWMutex
 }
 
 func NewHub(msgBus *bus.MessageBus) *Hub {
@@ -79,6 +81,18 @@ func (h *Hub) Run(ctx context.Context) {
 			logger.DebugC("dashboard", "WebSocket client disconnected")
 
 		case event := <-events:
+			// Cache latest QR state for late-joining clients
+			if event.Type == "qr_code" && event.QRCode != nil {
+				h.qrMu.Lock()
+				switch event.QRCode.Event {
+				case "success", "timeout", "error":
+					h.latestQR = nil
+				default:
+					h.latestQR = event.QRCode
+				}
+				h.qrMu.Unlock()
+			}
+
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue
@@ -94,6 +108,13 @@ func (h *Hub) Run(ctx context.Context) {
 			h.mu.RUnlock()
 		}
 	}
+}
+
+// GetLatestQR returns the latest pending QR code event, or nil if none.
+func (h *Hub) GetLatestQR() *bus.QRCodeEvent {
+	h.qrMu.RLock()
+	defer h.qrMu.RUnlock()
+	return h.latestQR
 }
 
 func (h *Hub) handleWebSocket(w http.ResponseWriter, r *http.Request) {

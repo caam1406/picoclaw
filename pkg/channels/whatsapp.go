@@ -163,10 +163,25 @@ func (c *WhatsAppChannel) loginWithQR(ctx context.Context) error {
 	for evt := range qrChan {
 		switch evt.Event {
 		case "code":
+			// Terminal display (fallback for headless)
 			fmt.Println("\n--- Scan this QR code with WhatsApp (Linked Devices) ---")
 			qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
 			fmt.Println("--- Waiting for scan... ---")
 			logger.InfoC("whatsapp", "QR code displayed – waiting for scan")
+
+			// Dashboard display via bus
+			svg, svgErr := generateQRSVG(evt.Code, 256)
+			if svgErr != nil {
+				logger.ErrorCF("whatsapp", "Failed to generate QR SVG", map[string]interface{}{
+					"error": svgErr.Error(),
+				})
+			}
+			c.bus.PublishQRCode(bus.QRCodeEvent{
+				Channel: "whatsapp",
+				Event:   "code",
+				Code:    evt.Code,
+				SVG:     svg,
+			})
 
 		case "login", "success":
 			devID := "unknown"
@@ -177,14 +192,26 @@ func (c *WhatsAppChannel) loginWithQR(ctx context.Context) error {
 				"device_id": devID,
 				"event":     evt.Event,
 			})
+			c.bus.PublishQRCode(bus.QRCodeEvent{
+				Channel: "whatsapp",
+				Event:   "success",
+			})
 			return nil
 
 		case "timeout":
 			logger.WarnC("whatsapp", "QR code timed out")
+			c.bus.PublishQRCode(bus.QRCodeEvent{
+				Channel: "whatsapp",
+				Event:   "timeout",
+			})
 			return fmt.Errorf("QR code login timed out – restart to try again")
 
 		case "error":
 			logger.ErrorC("whatsapp", "QR login error")
+			c.bus.PublishQRCode(bus.QRCodeEvent{
+				Channel: "whatsapp",
+				Event:   "error",
+			})
 			return fmt.Errorf("QR login error")
 		}
 	}
@@ -192,6 +219,10 @@ func (c *WhatsAppChannel) loginWithQR(ctx context.Context) error {
 	// Channel closed – check if we're actually connected (race with event handler)
 	if c.client.IsConnected() || c.client.Store.ID != nil {
 		logger.InfoC("whatsapp", "QR channel closed but client is connected – login OK")
+		c.bus.PublishQRCode(bus.QRCodeEvent{
+			Channel: "whatsapp",
+			Event:   "success",
+		})
 		return nil
 	}
 

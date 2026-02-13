@@ -676,13 +676,8 @@ func gatewayCmd() {
 	}
 	fmt.Println("✓ Heartbeat service started")
 
-	if err := channelManager.StartAll(ctx); err != nil {
-		fmt.Printf("Error starting channels: %v\n", err)
-	}
-
-	go agentLoop.Run(ctx)
-
-	// Start dashboard if enabled
+	// Start dashboard BEFORE channels so the WebSocket hub is ready
+	// to receive QR code events from WhatsApp during login
 	var dashboardServer *dashboard.Server
 	if cfg.Dashboard.Enabled {
 		contactsStore := contacts.NewStore(cfg.WorkspacePath())
@@ -703,6 +698,12 @@ func gatewayCmd() {
 			fmt.Printf("✓ Dashboard started on http://%s:%d\n", cfg.Dashboard.Host, cfg.Dashboard.Port)
 		}
 	}
+
+	if err := channelManager.StartAll(ctx); err != nil {
+		fmt.Printf("Error starting channels: %v\n", err)
+	}
+
+	go agentLoop.Run(ctx)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -767,12 +768,25 @@ func startDashboardOnly(cfg *config.Config) {
 		msgBus,
 	)
 
+	dashboardServer.SetDashboardOnly(true)
+
 	if err := dashboardServer.Start(ctx); err != nil {
 		fmt.Printf("Error starting dashboard: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Printf("✓ Dashboard (LLM not configured) started on http://%s:%d\n", cfg.Dashboard.Host, cfg.Dashboard.Port)
+
+	// Start any enabled channels (e.g. WhatsApp) so QR code login works from dashboard
+	enabledChannels := channelManager.GetEnabledChannels()
+	if len(enabledChannels) > 0 {
+		if err := channelManager.StartAll(ctx); err != nil {
+			fmt.Printf("Error starting channels: %v\n", err)
+		} else {
+			fmt.Printf("✓ Channels started: %v\n", enabledChannels)
+		}
+	}
+
 	fmt.Println("Configure your API keys and other settings, then restart picoclaw gateway.")
 
 	sigChan := make(chan os.Signal, 1)
