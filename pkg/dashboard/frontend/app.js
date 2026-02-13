@@ -280,23 +280,117 @@ function editContact(channel, id) {
   });
 }
 
+let waContactListData = null; // { self_jid, groups, recent_chats }
+
 function showAddContact() {
   document.getElementById('modal-add-contact').classList.add('active');
   document.getElementById('new-contact-channel').value = 'whatsapp';
   document.getElementById('new-contact-id').value = '';
   document.getElementById('new-contact-name').value = '';
+  onAddContactChannelChange();
+}
+
+function onAddContactChannelChange() {
+  const channel = document.getElementById('new-contact-channel').value;
+  const container = document.getElementById('add-contact-wa-list-container');
   const selfJidHint = document.getElementById('add-contact-self-jid-hint');
   const selfJidBtn = document.getElementById('btn-use-wa-self');
-  if (selfJidHint && selfJidBtn) {
+  if (channel === 'whatsapp') {
+    container.style.display = 'block';
+    loadWhatsAppContactList();
     if (waSelfJid) {
-      selfJidHint.textContent = 'Numero conectado: ' + waSelfJid.replace(/@.*/, '');
-      selfJidHint.style.display = 'block';
-      selfJidBtn.style.display = 'inline-block';
+      if (selfJidHint) selfJidHint.textContent = 'Numero conectado: ' + waSelfJid.replace(/@.*/, '');
+      if (selfJidHint) selfJidHint.style.display = 'block';
+      if (selfJidBtn) selfJidBtn.style.display = 'inline-block';
     } else {
-      selfJidHint.style.display = 'none';
-      selfJidBtn.style.display = 'none';
+      if (selfJidHint) selfJidHint.style.display = 'none';
+      if (selfJidBtn) selfJidBtn.style.display = 'none';
     }
+  } else {
+    container.style.display = 'none';
+    if (selfJidHint) selfJidHint.style.display = 'none';
+    if (selfJidBtn) selfJidBtn.style.display = 'none';
   }
+}
+
+function loadWhatsAppContactList() {
+  const listEl = document.getElementById('add-contact-wa-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="padding:16px;color:var(--text-muted);text-align:center">Carregando...</div>';
+  apiFetch('/api/v1/whatsapp/contact-list').then(data => {
+    waContactListData = data;
+    const html = [];
+    if (data.error) {
+      listEl.innerHTML = '<div class="form-hint" style="padding:12px">WhatsApp nao conectado ou canal indisponivel.</div>';
+      return;
+    }
+    if (data.self_jid) {
+      html.push('<div class="wa-contact-list-section">Meu numero</div>');
+      html.push(buildWaContactItem(data.self_jid, 'Meu numero', data.self_jid.replace(/@.*/, ''), 'self'));
+    }
+    if (data.recent_chats && data.recent_chats.length > 0) {
+      const contactsOnly = data.recent_chats.filter(c => !c.is_group);
+      if (contactsOnly.length > 0) {
+        html.push('<div class="wa-contact-list-section">Contatos (' + contactsOnly.length + ')</div>');
+        contactsOnly.forEach(c => {
+          const label = c.label || c.jid;
+          const meta = c.jid;
+          html.push(buildWaContactItem(c.jid, label, meta, 'Contato'));
+        });
+      }
+    }
+    if (data.groups && data.groups.length > 0) {
+      html.push('<div class="wa-contact-list-section">Grupos (' + data.groups.length + ')</div>');
+      data.groups.forEach(g => {
+        html.push(buildWaContactItem(g.jid, g.name, g.participant_count + ' participantes', 'Grupo'));
+      });
+    }
+    if (data.recent_chats && data.recent_chats.length > 0) {
+      const groupsInRecent = data.recent_chats.filter(c => c.is_group);
+      if (groupsInRecent.length > 0) {
+        html.push('<div class="wa-contact-list-section">Outros chats recentes</div>');
+        groupsInRecent.forEach(c => {
+          const label = c.label || c.jid;
+          html.push(buildWaContactItem(c.jid, label, c.jid, 'Grupo'));
+        });
+      }
+    }
+    if (html.length === 0) {
+      listEl.innerHTML = '<div class="form-hint" style="padding:12px">Nenhum contato ou grupo ainda. Envie uma mensagem no WhatsApp (ou receba de alguem) para o contato aparecer aqui.</div>';
+    } else {
+      listEl.innerHTML = html.join('');
+    }
+  }).catch(() => {
+    listEl.innerHTML = '<div class="form-hint" style="padding:12px">Erro ao carregar lista.</div>';
+  });
+}
+
+function attrEscape(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+function buildWaContactItem(jid, name, meta, tag) {
+  const safeName = escapeHtml(name);
+  const safeMeta = escapeHtml(meta);
+  const safeTag = escapeHtml(tag);
+  const dataJid = attrEscape(jid);
+  const dataName = attrEscape(name);
+  return '<div class="wa-contact-item" data-jid="' + dataJid + '" data-name="' + dataName + '" onclick="prefillContactFromWaEl(this)" title="Clique para preencher">' +
+    '<div class="wa-contact-info"><div class="wa-contact-name">' + safeName + '</div><div class="wa-contact-meta">' + safeMeta + '</div></div>' +
+    '<span class="wa-contact-tag">' + safeTag + '</span>' +
+    '<button type="button" class="btn btn-primary btn-use-contact" onclick="event.stopPropagation(); prefillContactFromWaEl(this.parentElement); createContact();">Adicionar</button>' +
+    '</div>';
+}
+
+function prefillContactFromWaEl(el) {
+  const jid = el.getAttribute('data-jid');
+  const name = el.getAttribute('data-name');
+  if (jid) prefillContactFromWa(jid, name || jid);
+}
+
+function prefillContactFromWa(jid, displayName) {
+  document.getElementById('new-contact-channel').value = 'whatsapp';
+  document.getElementById('new-contact-id').value = jid;
+  document.getElementById('new-contact-name').value = displayName || jid;
 }
 
 function useWhatsAppSelfAsContact() {

@@ -500,6 +500,13 @@ func appendLine(base, extra string) string {
 // Outbound messages
 // ---------------------------------------------------------------------------
 
+// WhatsAppGroupInfo is a group returned for the contact-list (dashboard).
+type WhatsAppGroupInfo struct {
+	JID              string `json:"jid"`
+	Name             string `json:"name"`
+	ParticipantCount int    `json:"participant_count"`
+}
+
 // GetSelfJID returns the logged-in WhatsApp number (JID) when connected, in the same format as chatID
 // (e.g. "5511999999999@s.whatsapp.net"). Empty string if not logged in. Used so the user can add themselves as a contact.
 func (c *WhatsAppChannel) GetSelfJID() string {
@@ -509,6 +516,29 @@ func (c *WhatsAppChannel) GetSelfJID() string {
 		return ""
 	}
 	return c.client.Store.ID.String()
+}
+
+// GetJoinedGroups returns the list of groups the user is in, for the dashboard contact picker.
+func (c *WhatsAppChannel) GetJoinedGroups(ctx context.Context) ([]WhatsAppGroupInfo, error) {
+	c.mu.Lock()
+	client := c.client
+	c.mu.Unlock()
+	if client == nil || !client.IsConnected() {
+		return nil, fmt.Errorf("whatsapp client not connected")
+	}
+	groups, err := client.GetJoinedGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WhatsAppGroupInfo, 0, len(groups))
+	for _, g := range groups {
+		out = append(out, WhatsAppGroupInfo{
+			JID:              g.JID.String(),
+			Name:             g.Name,
+			ParticipantCount: len(g.Participants),
+		})
+	}
+	return out, nil
 }
 
 // Send delivers a text message to the specified WhatsApp chat.

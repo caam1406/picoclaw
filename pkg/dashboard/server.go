@@ -94,9 +94,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/v1/config/storage/update", s.authMiddleware(s.handleUpdateStorageConfig))
 	mux.HandleFunc("/api/v1/config/storage/test", s.authMiddleware(s.handleTestStorageConnection))
 
-	// WhatsApp QR code endpoints
+	// WhatsApp QR code and contact list
 	mux.HandleFunc("/api/v1/whatsapp/qr", s.authMiddleware(s.handleWhatsAppQR))
 	mux.HandleFunc("/api/v1/whatsapp/connect", s.authMiddleware(s.handleWhatsAppConnect))
+	mux.HandleFunc("/api/v1/whatsapp/contact-list", s.authMiddleware(s.handleWhatsAppContactList))
 
 	// WebSocket (auth via query param)
 	mux.HandleFunc("/ws", s.handleWebSocket)

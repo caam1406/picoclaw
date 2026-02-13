@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/contacts"
+	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/storage"
 )
 
@@ -519,5 +521,69 @@ func (s *Server) handleWhatsAppConnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
 		"success": true,
 		"message": "WhatsApp connection started. QR code will appear shortly.",
+	})
+}
+
+// handleWhatsAppContactList returns groups and recent chats so the dashboard can list them in the add-contact modal.
+func (s *Server) handleWhatsAppContactList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	ch, ok := s.channelManager.GetChannel("whatsapp")
+	if !ok || ch == nil {
+		writeJSON(w, map[string]interface{}{
+			"self_jid":     "",
+			"groups":       []channels.WhatsAppGroupInfo{},
+			"recent_chats": []interface{}{},
+			"error":        "whatsapp channel not available",
+		})
+		return
+	}
+
+	wa, ok := ch.(*channels.WhatsAppChannel)
+	if !ok {
+		writeJSON(w, map[string]interface{}{
+			"self_jid":     "",
+			"groups":       []channels.WhatsAppGroupInfo{},
+			"recent_chats": []interface{}{},
+			"error":        "whatsapp channel not connected",
+		})
+		return
+	}
+
+	selfJID := wa.GetSelfJID()
+	groups, err := wa.GetJoinedGroups(r.Context())
+	if err != nil {
+		logger.WarnCF("dashboard", "GetJoinedGroups failed", map[string]interface{}{"error": err.Error()})
+		groups = nil
+	}
+
+	// Build recent_chats from sessions (whatsapp:* keys); exclude JIDs already in groups
+	groupJIDs := make(map[string]bool)
+	for _, g := range groups {
+		groupJIDs[g.JID] = true
+	}
+	var recentChats []map[string]interface{}
+	for _, sess := range s.sessions.ListSessions() {
+		if !strings.HasPrefix(sess.Key, "whatsapp:") {
+			continue
+		}
+		chatID := strings.TrimPrefix(sess.Key, "whatsapp:")
+		if chatID == "" || groupJIDs[chatID] {
+			continue
+		}
+		recentChats = append(recentChats, map[string]interface{}{
+			"jid":     chatID,
+			"label":   chatID,
+			"is_group": strings.Contains(chatID, "@g.us"),
+		})
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"self_jid":     selfJID,
+		"groups":       groups,
+		"recent_chats": recentChats,
 	})
 }

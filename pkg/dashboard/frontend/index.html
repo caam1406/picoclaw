@@ -568,18 +568,19 @@
 
 <!-- Add Contact Modal -->
 <div class="modal-overlay" id="modal-add-contact">
-  <div class="modal">
+  <div class="modal modal-wide">
     <h3>Novo Contato ou Grupo</h3>
-    <div class="form-hint" style="margin-bottom:12px">
-      Contatos e grupos recebem instrucoes personalizadas. Para <strong>grupos WhatsApp</strong> use o ID do grupo (termina em <code>@g.us</code>). O ID aparece em Sessoes quando alguem envia mensagem no grupo.
-    </div>
     <div class="form-group">
       <label>Canal</label>
-      <select id="new-contact-channel">
+      <select id="new-contact-channel" onchange="onAddContactChannelChange()">
         <option value="whatsapp">WhatsApp</option>
         <option value="telegram">Telegram</option>
         <option value="discord">Discord</option>
       </select>
+    </div>
+    <div id="add-contact-wa-list-container" class="wa-contact-list-container" style="display:none">
+      <div class="form-hint" style="margin-bottom:8px">Clique em um item para preencher o formulario abaixo e depois em Criar.</div>
+      <div id="add-contact-wa-list" class="wa-contact-list"></div>
     </div>
     <div class="form-group">
       <label>ID do Contato ou Grupo</label>
