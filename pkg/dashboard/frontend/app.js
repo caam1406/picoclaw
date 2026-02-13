@@ -8,6 +8,7 @@ let currentConfig = null;
 let currentSecrets = {};
 let liveMessages = [];
 let qrState = null;
+let waSelfJid = ''; // logged-in WhatsApp number (JID) when channel is connected, for "add my number"
 const MAX_LIVE_MESSAGES = 200;
 
 // ─── Init ───────────────────────────────────────────────────────────
@@ -203,6 +204,12 @@ function loadChannels() {
       updateSidebarQR('disconnected');
     }
 
+    if (data.whatsapp && data.whatsapp.self_jid) {
+      waSelfJid = data.whatsapp.self_jid;
+    } else {
+      waSelfJid = '';
+    }
+
     list.innerHTML = Object.entries(data).map(([name, info]) => {
       const dotClass = info.running ? 'running' : '';
       const clickAction = name === 'whatsapp' && !info.running ? `onclick="showView('qr')"` : '';
@@ -249,7 +256,7 @@ function showView(name) {
 function editContact(channel, id) {
   currentContact = { channel, id };
 
-  apiFetch('/api/v1/contacts/' + channel + '/' + id).then(data => {
+  apiFetch('/api/v1/contacts/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id)).then(data => {
     document.getElementById('contact-channel').value = data.channel;
     document.getElementById('contact-id').value = data.contact_id;
     document.getElementById('contact-name').value = data.display_name || '';
@@ -274,6 +281,25 @@ function showAddContact() {
   document.getElementById('new-contact-channel').value = 'whatsapp';
   document.getElementById('new-contact-id').value = '';
   document.getElementById('new-contact-name').value = '';
+  const selfJidHint = document.getElementById('add-contact-self-jid-hint');
+  const selfJidBtn = document.getElementById('btn-use-wa-self');
+  if (selfJidHint && selfJidBtn) {
+    if (waSelfJid) {
+      selfJidHint.textContent = 'Numero conectado: ' + waSelfJid.replace(/@.*/, '');
+      selfJidHint.style.display = 'block';
+      selfJidBtn.style.display = 'inline-block';
+    } else {
+      selfJidHint.style.display = 'none';
+      selfJidBtn.style.display = 'none';
+    }
+  }
+}
+
+function useWhatsAppSelfAsContact() {
+  if (!waSelfJid) return;
+  document.getElementById('new-contact-channel').value = 'whatsapp';
+  document.getElementById('new-contact-id').value = waSelfJid;
+  document.getElementById('new-contact-name').value = 'Meu numero';
 }
 
 function closeModal() {
@@ -290,7 +316,7 @@ function createContact() {
     return;
   }
 
-  apiFetch('/api/v1/contacts/' + channel + '/' + id, {
+  apiFetch('/api/v1/contacts/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id), {
     method: 'PUT',
     body: JSON.stringify({ display_name: name, instructions: '' })
   }).then(() => {
@@ -321,7 +347,7 @@ function saveContact() {
   const name = document.getElementById('contact-name').value.trim();
   const instructions = document.getElementById('contact-instructions').value.trim();
 
-  apiFetch('/api/v1/contacts/' + currentContact.channel + '/' + currentContact.id, {
+  apiFetch('/api/v1/contacts/' + encodeURIComponent(currentContact.channel) + '/' + encodeURIComponent(currentContact.id), {
     method: 'PUT',
     body: JSON.stringify({ display_name: name, instructions: instructions })
   }).then(() => {
@@ -336,7 +362,7 @@ function deleteContact() {
   if (!currentContact) return;
   if (!confirm('Excluir instrucoes para este contato?')) return;
 
-  apiFetch('/api/v1/contacts/' + currentContact.channel + '/' + currentContact.id, {
+  apiFetch('/api/v1/contacts/' + encodeURIComponent(currentContact.channel) + '/' + encodeURIComponent(currentContact.id), {
     method: 'DELETE'
   }).then(() => {
     toast('Contato removido');

@@ -275,11 +275,15 @@ func (c *WhatsAppChannel) eventHandler(evt interface{}) {
 
 // handleIncomingMessage processes a single incoming WhatsApp message.
 func (c *WhatsAppChannel) handleIncomingMessage(evt *events.Message) {
-	// Skip own messages and broadcasts
-	if evt.Info.IsFromMe {
+	// Skip broadcasts
+	if evt.Info.Chat.Server == "broadcast" {
 		return
 	}
-	if evt.Info.Chat.Server == "broadcast" {
+	// Skip own messages unless it's a self-chat (user messaging their own number so the agent can read)
+	isSelfChat := c.client != nil && c.client.Store.ID != nil &&
+		evt.Info.Chat.User == c.client.Store.ID.User &&
+		evt.Info.Chat.Server == c.client.Store.ID.Server
+	if evt.Info.IsFromMe && !isSelfChat {
 		return
 	}
 
@@ -495,6 +499,17 @@ func appendLine(base, extra string) string {
 // ---------------------------------------------------------------------------
 // Outbound messages
 // ---------------------------------------------------------------------------
+
+// GetSelfJID returns the logged-in WhatsApp number (JID) when connected, in the same format as chatID
+// (e.g. "5511999999999@s.whatsapp.net"). Empty string if not logged in. Used so the user can add themselves as a contact.
+func (c *WhatsAppChannel) GetSelfJID() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.client == nil || c.client.Store.ID == nil {
+		return ""
+	}
+	return c.client.Store.ID.String()
+}
 
 // Send delivers a text message to the specified WhatsApp chat.
 func (c *WhatsAppChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {

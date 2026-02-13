@@ -250,10 +250,17 @@ func (m *Manager) GetStatus() map[string]interface{} {
 
 	status := make(map[string]interface{})
 	for name, channel := range m.channels {
-		status[name] = map[string]interface{}{
+		chStatus := map[string]interface{}{
 			"enabled": true,
 			"running": channel.IsRunning(),
 		}
+		// Expose self JID for WhatsApp so the dashboard can offer "add my number as contact"
+		if name == "whatsapp" {
+			if wa, ok := channel.(*WhatsAppChannel); ok && wa.GetSelfJID() != "" {
+				chStatus["self_jid"] = wa.GetSelfJID()
+			}
+		}
+		status[name] = chStatus
 	}
 	return status
 }
