@@ -45,6 +45,11 @@
       <button class="btn-add" onclick="showAddContact()">+ Novo Contato</button>
     </div>
     <div class="sidebar-section">
+      <div class="sidebar-label">Instrucoes Padrao</div>
+      <div id="defaults-list"></div>
+      <button class="btn-add" onclick="showAddDefault()">+ Nova Instrucao</button>
+    </div>
+    <div class="sidebar-section">
       <div class="sidebar-label">Monitoramento</div>
       <div class="sidebar-item" onclick="showView('live')">Mensagens Live</div>
     </div>
@@ -117,6 +122,40 @@
       </div>
     </div>
 
+    <!-- Default Instructions View -->
+    <div id="view-default" class="view">
+      <div class="card">
+        <div class="detail-header">
+          <div class="detail-avatar" id="default-avatar">*</div>
+          <div class="detail-info">
+            <h2 id="default-title">Instrucao Padrao</h2>
+            <p id="default-subtitle">Aplica-se a nao-contatos</p>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Canal</label>
+          <select id="default-channel">
+            <option value="*">Global (todos os canais)</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="telegram">Telegram</option>
+            <option value="discord">Discord</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Instrucoes para Nao-Contatos</label>
+          <textarea id="default-instructions" placeholder="Ex: Responda de forma educada e objetiva. Nao compartilhe informacoes pessoais do dono."></textarea>
+        </div>
+        <div class="form-hint" style="margin-bottom:16px">
+          Prioridade: Instrucao do contato > Instrucao por canal > Instrucao global (*)
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="saveDefault()">Salvar</button>
+          <button class="btn btn-danger" id="btn-delete-default" onclick="deleteDefault()">Excluir</button>
+          <button class="btn btn-secondary" onclick="showView('overview')">Voltar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Settings View -->
     <div id="view-settings" class="view">
       <div class="card">
@@ -183,6 +222,29 @@
     <div class="form-actions">
       <button class="btn btn-primary" onclick="createContact()">Criar</button>
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Default Instruction Modal -->
+<div class="modal-overlay" id="modal-add-default">
+  <div class="modal">
+    <h3>Nova Instrucao Padrao</h3>
+    <div class="form-group">
+      <label>Canal</label>
+      <select id="new-default-channel">
+        <option value="*">Global (todos os canais)</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="telegram">Telegram</option>
+        <option value="discord">Discord</option>
+      </select>
+    </div>
+    <div class="form-hint" style="margin-bottom:16px">
+      Use "Global" para aplicar a todos os canais sem instrucao especifica.
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="createDefault()">Criar</button>
+      <button class="btn btn-secondary" onclick="closeDefaultModal()">Cancelar</button>
     </div>
   </div>
 </div>

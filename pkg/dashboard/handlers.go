@@ -133,6 +133,62 @@ func (s *Server) handleContactDetail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleDefaults(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		defaults := s.contactsStore.ListDefaults()
+		writeJSON(w, defaults)
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleDefaultDetail(w http.ResponseWriter, r *http.Request) {
+	// Extract channel from path: /api/v1/defaults/{channel}
+	channel := strings.TrimPrefix(r.URL.Path, "/api/v1/defaults/")
+	if channel == "" {
+		http.Error(w, `{"error":"channel is required (use * for global)"}`, http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		defaults := s.contactsStore.ListDefaults()
+		inst, ok := defaults[channel]
+		if !ok {
+			http.Error(w, `{"error":"default instruction not found"}`, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]string{"channel": channel, "instructions": inst})
+
+	case http.MethodPut:
+		var body struct {
+			Instructions string `json:"instructions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+			return
+		}
+
+		if err := s.contactsStore.SetDefault(channel, body.Instructions); err != nil {
+			http.Error(w, `{"error":"failed to save default instruction"}`, http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, map[string]string{"status": "ok"})
+
+	case http.MethodDelete:
+		if err := s.contactsStore.DeleteDefault(channel); err != nil {
+			http.Error(w, `{"error":"default instruction not found"}`, http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "deleted"})
+
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)

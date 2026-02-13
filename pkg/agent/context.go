@@ -173,11 +173,13 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 	if channel != "" && chatID != "" {
 		systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
 
-		// Inject per-contact custom instructions if available
+		// Inject per-contact custom instructions if available, otherwise try default instructions
 		if cb.contactsStore != nil {
 			sessionKey := fmt.Sprintf("%s:%s", channel, chatID)
 			if instruction := cb.contactsStore.GetForSession(sessionKey); instruction != "" {
 				systemPrompt += "\n\n## Contact-Specific Instructions\n\n" + instruction
+			} else if defaultInst := cb.contactsStore.GetDefault(channel); defaultInst != "" {
+				systemPrompt += "\n\n## Default Instructions\n\n" + defaultInst
 			}
 		}
 	}

@@ -3,6 +3,7 @@
 let token = localStorage.getItem('picoclaw_token') || '';
 let ws = null;
 let currentContact = null; // {channel, id} of contact being edited
+let currentDefault = null; // channel key of default being edited
 let liveMessages = [];
 const MAX_LIVE_MESSAGES = 200;
 
@@ -47,6 +48,7 @@ function enterDashboard() {
   loadOverview();
   loadChannels();
   loadContacts();
+  loadDefaults();
 }
 
 // ─── API Helper ─────────────────────────────────────────────────────
@@ -218,6 +220,7 @@ function showView(name) {
 
   if (name === 'overview') loadOverview();
   if (name === 'settings') loadStorageConfig();
+  if (name === 'defaults') loadDefaults();
 }
 
 // ─── Contact CRUD ───────────────────────────────────────────────────
@@ -318,6 +321,115 @@ function deleteContact() {
     loadContacts();
     showView('overview');
     currentContact = null;
+  }).catch(() => {
+    toast('Erro ao excluir', true);
+  });
+}
+
+// ─── Default Instructions CRUD ───────────────────────────────────────
+function getDefaultLabel(channel) {
+  if (channel === '*') return 'Global';
+  return capitalize(channel);
+}
+
+function loadDefaults() {
+  apiFetch('/api/v1/defaults').then(data => {
+    const list = document.getElementById('defaults-list');
+    if (!data || Object.keys(data).length === 0) {
+      list.innerHTML = '<div style="color:var(--text-muted);padding:8px 12px;font-size:13px">Nenhuma instrucao</div>';
+      return;
+    }
+
+    list.innerHTML = Object.entries(data).map(([channel, inst]) => {
+      const label = getDefaultLabel(channel);
+      const preview = inst.length > 30 ? inst.slice(0, 30) + '...' : inst;
+      return `<div class="sidebar-item" onclick="editDefault('${escapeAttr(channel)}')">
+        <span>${escapeHtml(label)}</span>
+        <span class="contact-tag">${channel === '*' ? 'global' : channel}</span>
+      </div>`;
+    }).join('');
+  }).catch(() => {});
+}
+
+function editDefault(channel) {
+  currentDefault = channel;
+
+  apiFetch('/api/v1/defaults/' + encodeURIComponent(channel)).then(data => {
+    document.getElementById('default-channel').value = data.channel;
+    document.getElementById('default-channel').disabled = true;
+    document.getElementById('default-instructions').value = data.instructions || '';
+    document.getElementById('default-title').textContent = 'Instrucao: ' + getDefaultLabel(data.channel);
+    document.getElementById('default-subtitle').textContent = data.channel === '*' ? 'Aplica-se a todos os nao-contatos' : 'Aplica-se a nao-contatos no ' + capitalize(data.channel);
+    document.getElementById('default-avatar').textContent = data.channel === '*' ? '*' : data.channel.charAt(0).toUpperCase();
+    document.getElementById('btn-delete-default').style.display = 'inline-block';
+
+    showView('default');
+  }).catch(() => {
+    toast('Erro ao carregar instrucao padrao', true);
+  });
+}
+
+function showAddDefault() {
+  document.getElementById('modal-add-default').classList.add('active');
+  document.getElementById('new-default-channel').value = '*';
+}
+
+function closeDefaultModal() {
+  document.getElementById('modal-add-default').classList.remove('active');
+}
+
+function createDefault() {
+  const channel = document.getElementById('new-default-channel').value;
+
+  apiFetch('/api/v1/defaults/' + encodeURIComponent(channel), {
+    method: 'PUT',
+    body: JSON.stringify({ instructions: '' })
+  }).then(() => {
+    closeDefaultModal();
+    loadDefaults();
+    toast('Instrucao padrao criada');
+    // Open edit view
+    currentDefault = channel;
+    document.getElementById('default-channel').value = channel;
+    document.getElementById('default-channel').disabled = true;
+    document.getElementById('default-instructions').value = '';
+    document.getElementById('default-title').textContent = 'Instrucao: ' + getDefaultLabel(channel);
+    document.getElementById('default-subtitle').textContent = channel === '*' ? 'Aplica-se a todos os nao-contatos' : 'Aplica-se a nao-contatos no ' + capitalize(channel);
+    document.getElementById('default-avatar').textContent = channel === '*' ? '*' : channel.charAt(0).toUpperCase();
+    document.getElementById('btn-delete-default').style.display = 'inline-block';
+    showView('default');
+  }).catch(() => {
+    toast('Erro ao criar instrucao padrao', true);
+  });
+}
+
+function saveDefault() {
+  if (!currentDefault) return;
+
+  const instructions = document.getElementById('default-instructions').value.trim();
+
+  apiFetch('/api/v1/defaults/' + encodeURIComponent(currentDefault), {
+    method: 'PUT',
+    body: JSON.stringify({ instructions: instructions })
+  }).then(() => {
+    toast('Instrucao padrao salva');
+    loadDefaults();
+  }).catch(() => {
+    toast('Erro ao salvar', true);
+  });
+}
+
+function deleteDefault() {
+  if (!currentDefault) return;
+  if (!confirm('Excluir instrucao padrao para ' + getDefaultLabel(currentDefault) + '?')) return;
+
+  apiFetch('/api/v1/defaults/' + encodeURIComponent(currentDefault), {
+    method: 'DELETE'
+  }).then(() => {
+    toast('Instrucao padrao removida');
+    loadDefaults();
+    showView('overview');
+    currentDefault = null;
   }).catch(() => {
     toast('Erro ao excluir', true);
   });

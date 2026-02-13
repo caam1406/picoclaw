@@ -20,9 +20,11 @@ type ContactInstruction struct {
 }
 
 type Store struct {
-	mu           sync.RWMutex
-	instructions map[string]*ContactInstruction
-	filePath     string
+	mu               sync.RWMutex
+	instructions     map[string]*ContactInstruction
+	filePath         string
+	defaults         map[string]string // key: channel name or "*" for global
+	defaultsFilePath string
 }
 
 func NewStore(workspace string) *Store {
@@ -30,10 +32,13 @@ func NewStore(workspace string) *Store {
 	os.MkdirAll(dir, 0755)
 
 	s := &Store{
-		instructions: make(map[string]*ContactInstruction),
-		filePath:     filepath.Join(dir, "instructions.json"),
+		instructions:     make(map[string]*ContactInstruction),
+		filePath:         filepath.Join(dir, "instructions.json"),
+		defaults:         make(map[string]string),
+		defaultsFilePath: filepath.Join(dir, "defaults.json"),
 	}
 	s.load()
+	s.loadDefaults()
 	return s
 }
 
@@ -188,4 +193,70 @@ func (s *Store) saveLocked() error {
 	}
 
 	return os.WriteFile(s.filePath, data, 0644)
+}
+
+// GetDefault returns the default instruction for a channel.
+// It tries the specific channel first, then falls back to the global ("*") default.
+func (s *Store) GetDefault(channel string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if inst, ok := s.defaults[channel]; ok {
+		return inst
+	}
+	if inst, ok := s.defaults["*"]; ok {
+		return inst
+	}
+	return ""
+}
+
+// SetDefault sets a default instruction for a channel (use "*" for global).
+func (s *Store) SetDefault(channel, instructions string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.defaults[channel] = instructions
+	return s.saveDefaultsLocked()
+}
+
+// DeleteDefault removes a default instruction for a channel.
+func (s *Store) DeleteDefault(channel string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.defaults[channel]; !ok {
+		return fmt.Errorf("default instruction not found for channel: %s", channel)
+	}
+	delete(s.defaults, channel)
+	return s.saveDefaultsLocked()
+}
+
+// ListDefaults returns all default instructions.
+func (s *Store) ListDefaults() map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[string]string, len(s.defaults))
+	for k, v := range s.defaults {
+		result[k] = v
+	}
+	return result
+}
+
+func (s *Store) loadDefaults() {
+	data, err := os.ReadFile(s.defaultsFilePath)
+	if err != nil {
+		return
+	}
+
+	json.Unmarshal(data, &s.defaults)
+}
+
+func (s *Store) saveDefaultsLocked() error {
+	data, err := json.MarshalIndent(s.defaults, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(s.defaultsFilePath, data, 0644)
 }

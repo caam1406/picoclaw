@@ -78,6 +78,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/v1/sessions/", s.authMiddleware(s.handleSessionDetail))
 	mux.HandleFunc("/api/v1/contacts", s.authMiddleware(s.handleContacts))
 	mux.HandleFunc("/api/v1/contacts/", s.authMiddleware(s.handleContactDetail))
+	mux.HandleFunc("/api/v1/defaults", s.authMiddleware(s.handleDefaults))
+	mux.HandleFunc("/api/v1/defaults/", s.authMiddleware(s.handleDefaultDetail))
 	mux.HandleFunc("/api/v1/send", s.authMiddleware(s.handleSend))
 
 	// Storage configuration endpoints
