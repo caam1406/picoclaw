@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -15,7 +16,18 @@ type Config struct {
 	Providers ProvidersConfig `json:"providers"`
 	Gateway   GatewayConfig   `json:"gateway"`
 	Tools     ToolsConfig     `json:"tools"`
+	Dashboard DashboardConfig `json:"dashboard"`
+	Storage   StorageConfig   `json:"storage"`
 	mu        sync.RWMutex
+	filePath  string // Store path for Save() method
+}
+
+type DashboardConfig struct {
+	Enabled      bool   `json:"enabled" env:"PICOCLAW_DASHBOARD_ENABLED"`
+	Host         string `json:"host" env:"PICOCLAW_DASHBOARD_HOST"`
+	Port         int    `json:"port" env:"PICOCLAW_DASHBOARD_PORT"`
+	Token        string `json:"token" env:"PICOCLAW_DASHBOARD_TOKEN"`
+	ContactsOnly bool   `json:"contacts_only" env:"PICOCLAW_DASHBOARD_CONTACTS_ONLY"`
 }
 
 type AgentsConfig struct {
@@ -42,8 +54,9 @@ type ChannelsConfig struct {
 
 type WhatsAppConfig struct {
 	Enabled   bool     `json:"enabled" env:"PICOCLAW_CHANNELS_WHATSAPP_ENABLED"`
-	BridgeURL string   `json:"bridge_url" env:"PICOCLAW_CHANNELS_WHATSAPP_BRIDGE_URL"`
+	StorePath string   `json:"store_path" env:"PICOCLAW_CHANNELS_WHATSAPP_STORE_PATH"`
 	AllowFrom []string `json:"allow_from" env:"PICOCLAW_CHANNELS_WHATSAPP_ALLOW_FROM"`
+	BridgeURL string   `json:"bridge_url,omitempty"` // legado, ignorado
 }
 
 type TelegramConfig struct {
@@ -94,6 +107,7 @@ type ProvidersConfig struct {
 	OpenRouter ProviderConfig `json:"openrouter"`
 	Groq       ProviderConfig `json:"groq"`
 	Zhipu      ProviderConfig `json:"zhipu"`
+	ZAI        ProviderConfig `json:"zai"`
 	VLLM       ProviderConfig `json:"vllm"`
 	Gemini     ProviderConfig `json:"gemini"`
 }
@@ -121,6 +135,13 @@ type ToolsConfig struct {
 	Web WebToolsConfig `json:"web"`
 }
 
+type StorageConfig struct {
+	Type        string `json:"type" env:"PICOCLAW_STORAGE_TYPE"`
+	DatabaseURL string `json:"database_url" env:"PICOCLAW_STORAGE_DATABASE_URL"`
+	FilePath    string `json:"file_path" env:"PICOCLAW_STORAGE_FILE_PATH"`
+	SSLEnabled  bool   `json:"ssl_enabled" env:"PICOCLAW_STORAGE_SSL_ENABLED"`
+}
+
 func DefaultConfig() *Config {
 	return &Config{
 		Agents: AgentsConfig{
@@ -135,7 +156,7 @@ func DefaultConfig() *Config {
 		Channels: ChannelsConfig{
 			WhatsApp: WhatsAppConfig{
 				Enabled:   false,
-				BridgeURL: "ws://localhost:3001",
+				StorePath: "~/.picoclaw/whatsapp.db",
 				AllowFrom: []string{},
 			},
 			Telegram: TelegramConfig{
@@ -181,6 +202,7 @@ func DefaultConfig() *Config {
 			OpenRouter: ProviderConfig{},
 			Groq:       ProviderConfig{},
 			Zhipu:      ProviderConfig{},
+			ZAI:        ProviderConfig{},
 			VLLM:       ProviderConfig{},
 			Gemini:     ProviderConfig{},
 		},
@@ -196,11 +218,25 @@ func DefaultConfig() *Config {
 				},
 			},
 		},
+		Dashboard: DashboardConfig{
+			Enabled:      false,
+			Host:         "127.0.0.1",
+			Port:         18791,
+			Token:        "",
+			ContactsOnly: false,
+		},
+		Storage: StorageConfig{
+			Type:        "file",
+			DatabaseURL: "",
+			FilePath:    "~/.picoclaw/workspace/sessions",
+			SSLEnabled:  false,
+		},
 	}
 }
 
 func LoadConfig(path string) (*Config, error) {
 	cfg := DefaultConfig()
+	cfg.filePath = path // Store path for later Save() calls
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -238,6 +274,14 @@ func SaveConfig(path string, cfg *Config) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+// Save saves the configuration to the file it was loaded from.
+func (c *Config) Save() error {
+	if c.filePath == "" {
+		return fmt.Errorf("config file path not set")
+	}
+	return SaveConfig(c.filePath, c)
+}
+
 func (c *Config) WorkspacePath() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -262,6 +306,9 @@ func (c *Config) GetAPIKey() string {
 	if c.Providers.Zhipu.APIKey != "" {
 		return c.Providers.Zhipu.APIKey
 	}
+	if c.Providers.ZAI.APIKey != "" {
+		return c.Providers.ZAI.APIKey
+	}
 	if c.Providers.Groq.APIKey != "" {
 		return c.Providers.Groq.APIKey
 	}
@@ -282,6 +329,12 @@ func (c *Config) GetAPIBase() string {
 	}
 	if c.Providers.Zhipu.APIKey != "" {
 		return c.Providers.Zhipu.APIBase
+	}
+	if c.Providers.ZAI.APIKey != "" {
+		if c.Providers.ZAI.APIBase != "" {
+			return c.Providers.ZAI.APIBase
+		}
+		return "https://api.z.ai/api/paas/v4"
 	}
 	if c.Providers.VLLM.APIKey != "" && c.Providers.VLLM.APIBase != "" {
 		return c.Providers.VLLM.APIBase

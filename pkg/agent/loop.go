@@ -18,6 +18,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/session"
@@ -35,6 +36,8 @@ type AgentLoop struct {
 	sessions       *session.SessionManager
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
+	contactsStore  *contacts.Store // Per-contact gate: only registered contacts get responses
+	contactsOnly   bool           // When true, only registered contacts get responses
 	running        bool
 	summarizing    sync.Map      // Tracks which sessions are currently being summarized
 }
@@ -145,6 +148,19 @@ func (al *AgentLoop) RegisterTool(tool tools.Tool) {
 	al.tools.Register(tool)
 }
 
+// SetContactsStore connects the per-contact instructions store to the context builder.
+// When contactsOnly is true, only registered contacts will receive responses.
+func (al *AgentLoop) SetContactsStore(store *contacts.Store, contactsOnly bool) {
+	al.contactsStore = store
+	al.contactsOnly = contactsOnly
+	al.contextBuilder.SetContactsStore(store)
+}
+
+// GetSessionManager returns the session manager for dashboard access.
+func (al *AgentLoop) GetSessionManager() *session.SessionManager {
+	return al.sessions
+}
+
 func (al *AgentLoop) ProcessDirect(ctx context.Context, content, sessionKey string) (string, error) {
 	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct")
 }
@@ -175,6 +191,22 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 	// Route system messages to processSystemMessage
 	if msg.Channel == "system" {
 		return al.processSystemMessage(ctx, msg)
+	}
+
+	// Contact gate: when contacts_only is enabled, only registered contacts get responses.
+	// Internal channels (cli, cron) always bypass this check.
+	if al.contactsOnly && al.contactsStore != nil {
+		if msg.Channel != "cli" && msg.Channel != "cron" {
+			if !al.contactsStore.IsRegistered(msg.SessionKey) {
+				logger.InfoCF("agent", "Message ignored: contact not registered (contacts_only=true)",
+					map[string]interface{}{
+						"channel":     msg.Channel,
+						"sender_id":   msg.SenderID,
+						"session_key": msg.SessionKey,
+					})
+				return "", nil
+			}
+		}
 	}
 
 	// Process as user message

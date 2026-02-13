@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PicoClaw Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>PicoClaw</h1>
+    <p>Dashboard de controle do agente</p>
+    <input type="password" id="token-input" placeholder="Token de acesso" autocomplete="off">
+    <button onclick="doLogin()">Entrar</button>
+    <div id="login-error">Token invalido</div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard" style="display:grid">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-title">PicoClaw Dashboard</div>
+    <div class="header-actions">
+      <div class="ws-status">
+        <div class="ws-dot" id="ws-dot"></div>
+        <span id="ws-label">Desconectado</span>
+      </div>
+      <button class="btn-sm" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Canais</div>
+      <div id="channels-list"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Contatos</div>
+      <div id="contacts-list"></div>
+      <button class="btn-add" onclick="showAddContact()">+ Novo Contato</button>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Instrucoes Padrao</div>
+      <div id="defaults-list"></div>
+      <button class="btn-add" onclick="showAddDefault()">+ Nova Instrucao</button>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Monitoramento</div>
+      <div class="sidebar-item" onclick="showView('live')">Mensagens Live</div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Sistema</div>
+      <div class="sidebar-item" onclick="showView('settings')">Configurações</div>
+    </div>
+  </div>
+
+  <!-- Main Content Area -->
+  <div class="main">
+
+    <!-- Overview View -->
+    <div id="view-overview" class="view active">
+      <div class="card">
+        <div class="card-title">Visao Geral</div>
+        <div class="stat-grid" id="stats-grid"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Sessoes Recentes</div>
+        <div id="sessions-list"></div>
+      </div>
+    </div>
+
+    <!-- Contact Detail View -->
+    <div id="view-contact" class="view">
+      <div class="card">
+        <div class="detail-header">
+          <div class="detail-avatar" id="contact-avatar">?</div>
+          <div class="detail-info">
+            <h2 id="contact-title">Contato</h2>
+            <p id="contact-subtitle">canal / id</p>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Nome de Exibicao</label>
+          <input type="text" id="contact-name" placeholder="Nome do contato">
+        </div>
+        <div class="form-group">
+          <label>Canal</label>
+          <select id="contact-channel">
+            <option value="whatsapp">WhatsApp</option>
+            <option value="telegram">Telegram</option>
+            <option value="discord">Discord</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>ID do Contato (telefone, user ID, etc)</label>
+          <input type="text" id="contact-id" placeholder="Ex: 5511982650676">
+        </div>
+        <div class="form-group">
+          <label>Instrucoes Personalizadas para o Agente</label>
+          <textarea id="contact-instructions" placeholder="Ex: Responda sempre em ingles. Seja formal e objetivo. O nome desta pessoa e Joao e ele prefere respostas curtas."></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="saveContact()">Salvar</button>
+          <button class="btn btn-danger" id="btn-delete-contact" onclick="deleteContact()">Excluir</button>
+          <button class="btn btn-secondary" onclick="showView('overview')">Voltar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Messages View -->
+    <div id="view-live" class="view">
+      <div class="card">
+        <div class="card-title">Mensagens em Tempo Real</div>
+        <div class="messages-stream" id="live-messages">
+          <div style="color:var(--text-muted);padding:20px;text-align:center">Aguardando mensagens...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Default Instructions View -->
+    <div id="view-default" class="view">
+      <div class="card">
+        <div class="detail-header">
+          <div class="detail-avatar" id="default-avatar">*</div>
+          <div class="detail-info">
+            <h2 id="default-title">Instrucao Padrao</h2>
+            <p id="default-subtitle">Aplica-se a nao-contatos</p>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Canal</label>
+          <select id="default-channel">
+            <option value="*">Global (todos os canais)</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="telegram">Telegram</option>
+            <option value="discord">Discord</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Instrucoes para Nao-Contatos</label>
+          <textarea id="default-instructions" placeholder="Ex: Responda de forma educada e objetiva. Nao compartilhe informacoes pessoais do dono."></textarea>
+        </div>
+        <div class="form-hint" style="margin-bottom:16px">
+          Prioridade: Instrucao do contato > Instrucao por canal > Instrucao global (*)
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="saveDefault()">Salvar</button>
+          <button class="btn btn-danger" id="btn-delete-default" onclick="deleteDefault()">Excluir</button>
+          <button class="btn btn-secondary" onclick="showView('overview')">Voltar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings View -->
+    <div id="view-settings" class="view">
+      <div class="card">
+        <div class="card-title">Configuracao de Armazenamento</div>
+        <div class="form-group">
+          <label>Tipo de Storage</label>
+          <select id="storage-type">
+            <option value="file">Arquivos JSON (file)</option>
+            <option value="postgres">PostgreSQL (postgres)</option>
+            <option value="sqlite">SQLite (sqlite) - Em breve</option>
+          </select>
+        </div>
+        <div class="form-group" id="storage-url-group">
+          <label>Database URL</label>
+          <input type="text" id="storage-url" placeholder="postgres://user:password@localhost:5432/picoclaw?sslmode=disable">
+          <div class="form-hint">Formato: postgres://usuario:senha@host:porta/database?sslmode=disable</div>
+        </div>
+        <div class="form-group" id="storage-filepath-group">
+          <label>Caminho do Workspace</label>
+          <input type="text" id="storage-filepath" placeholder="~/.picoclaw/workspace">
+          <div class="form-hint">Diretorio onde os arquivos JSON serao armazenados</div>
+        </div>
+        <div class="form-group" id="storage-ssl-group" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="storage-ssl-enabled" style="width:auto">
+            <span>Habilitar SSL/TLS</span>
+          </label>
+          <div class="form-hint">Desabilite se o servidor PostgreSQL não tiver SSL configurado</div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="testStorageConnection()">Testar Conexao</button>
+          <button class="btn btn-success" onclick="saveStorageConfig()">Salvar Configuracao</button>
+        </div>
+        <div id="storage-test-result" class="storage-result"></div>
+        <div class="warning-box">
+          <strong>⚠️ Importante:</strong> Alterações na configuração de storage requerem <strong>reinicialização do PicoClaw</strong> para entrarem em efeito.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Add Contact Modal -->
+<div class="modal-overlay" id="modal-add-contact">
+  <div class="modal">
+    <h3>Novo Contato</h3>
+    <div class="form-group">
+      <label>Canal</label>
+      <select id="new-contact-channel">
+        <option value="whatsapp">WhatsApp</option>
+        <option value="telegram">Telegram</option>
+        <option value="discord">Discord</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>ID do Contato</label>
+      <input type="text" id="new-contact-id" placeholder="Ex: 5511982650676">
+    </div>
+    <div class="form-group">
+      <label>Nome</label>
+      <input type="text" id="new-contact-name" placeholder="Nome de exibicao">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="createContact()">Criar</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Default Instruction Modal -->
+<div class="modal-overlay" id="modal-add-default">
+  <div class="modal">
+    <h3>Nova Instrucao Padrao</h3>
+    <div class="form-group">
+      <label>Canal</label>
+      <select id="new-default-channel">
+        <option value="*">Global (todos os canais)</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="telegram">Telegram</option>
+        <option value="discord">Discord</option>
+      </select>
+    </div>
+    <div class="form-hint" style="margin-bottom:16px">
+      Use "Global" para aplicar a todos os canais sem instrucao especifica.
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="createDefault()">Criar</button>
+      <button class="btn btn-secondary" onclick="closeDefaultModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

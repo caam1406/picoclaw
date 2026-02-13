@@ -207,7 +207,14 @@ func CreateProvider(cfg *config.Config) (LLMProvider, error) {
 			apiBase = "https://generativelanguage.googleapis.com/v1beta"
 		}
 
-	case (strings.Contains(lowerModel, "glm") || strings.Contains(lowerModel, "zhipu") || strings.Contains(lowerModel, "zai")) && cfg.Providers.Zhipu.APIKey != "":
+	case (strings.Contains(lowerModel, "glm") || strings.Contains(lowerModel, "zai")) && cfg.Providers.ZAI.APIKey != "":
+		apiKey = cfg.Providers.ZAI.APIKey
+		apiBase = cfg.Providers.ZAI.APIBase
+		if apiBase == "" {
+			apiBase = "https://api.z.ai/api/paas/v4"
+		}
+
+	case (strings.Contains(lowerModel, "glm") || strings.Contains(lowerModel, "zhipu")) && cfg.Providers.Zhipu.APIKey != "":
 		apiKey = cfg.Providers.Zhipu.APIKey
 		apiBase = cfg.Providers.Zhipu.APIBase
 		if apiBase == "" {

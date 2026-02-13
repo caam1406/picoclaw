@@ -22,7 +22,9 @@ import (
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/channels"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/cron"
+	"github.com/sipeed/picoclaw/pkg/dashboard"
 	"github.com/sipeed/picoclaw/pkg/heartbeat"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
@@ -162,23 +164,42 @@ func printHelp() {
 func onboard() {
 	configPath := getConfigPath()
 
+	var cfg *config.Config
+
 	if _, err := os.Stat(configPath); err == nil {
+		// Config already exists - load it and only overwrite if user confirms
 		fmt.Printf("Config already exists at %s\n", configPath)
-		fmt.Print("Overwrite? (y/n): ")
+		fmt.Print("Overwrite config? (y/n): ")
 		var response string
 		fmt.Scanln(&response)
-		if response != "y" {
-			fmt.Println("Aborted.")
-			return
+		if response == "y" {
+			cfg = config.DefaultConfig()
+			if err := config.SaveConfig(configPath, cfg); err != nil {
+				fmt.Printf("Error saving config: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("✓ Config overwritten")
+		} else {
+			// Keep existing config, still ensure workspace is set up
+			var loadErr error
+			cfg, loadErr = config.LoadConfig(configPath)
+			if loadErr != nil {
+				fmt.Printf("Error loading existing config: %v\n", loadErr)
+				os.Exit(1)
+			}
+			fmt.Println("✓ Keeping existing config")
 		}
+	} else {
+		// No config exists - create new one
+		cfg = config.DefaultConfig()
+		if err := config.SaveConfig(configPath, cfg); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✓ Config created at", configPath)
 	}
 
-	cfg := config.DefaultConfig()
-	if err := config.SaveConfig(configPath, cfg); err != nil {
-		fmt.Printf("Error saving config: %v\n", err)
-		os.Exit(1)
-	}
-
+	// Always ensure workspace and templates exist
 	workspace := cfg.WorkspacePath()
 	os.MkdirAll(workspace, 0755)
 	os.MkdirAll(filepath.Join(workspace, "memory"), 0755)
@@ -586,6 +607,12 @@ func gatewayCmd() {
 				logger.InfoC("voice", "Groq transcription attached to Discord channel")
 			}
 		}
+		if whatsappChannel, ok := channelManager.GetChannel("whatsapp"); ok {
+			if wc, ok := whatsappChannel.(*channels.WhatsAppChannel); ok {
+				wc.SetTranscriber(transcriber)
+				logger.InfoC("voice", "Groq transcription attached to WhatsApp channel")
+			}
+		}
 	}
 
 	enabledChannels := channelManager.GetEnabledChannels()
@@ -617,12 +644,37 @@ func gatewayCmd() {
 
 	go agentLoop.Run(ctx)
 
+	// Start dashboard if enabled
+	var dashboardServer *dashboard.Server
+	if cfg.Dashboard.Enabled && cfg.Dashboard.Token != "" {
+		contactsStore := contacts.NewStore(cfg.WorkspacePath())
+		agentLoop.SetContactsStore(contactsStore, cfg.Dashboard.ContactsOnly)
+
+		dashboardServer = dashboard.NewServer(
+			cfg.Dashboard,
+			cfg,
+			channelManager,
+			agentLoop.GetSessionManager(),
+			contactsStore,
+			msgBus,
+		)
+
+		if err := dashboardServer.Start(ctx); err != nil {
+			fmt.Printf("Error starting dashboard: %v\n", err)
+		} else {
+			fmt.Printf("✓ Dashboard started on http://%s:%d\n", cfg.Dashboard.Host, cfg.Dashboard.Port)
+		}
+	}
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
 	<-sigChan
 
 	fmt.Println("\nShutting down...")
 	cancel()
+	if dashboardServer != nil {
+		dashboardServer.Stop()
+	}
 	heartbeatService.Stop()
 	cronService.Stop()
 	agentLoop.Stop()
@@ -662,6 +714,7 @@ func statusCmd() {
 		hasOpenAI := cfg.Providers.OpenAI.APIKey != ""
 		hasGemini := cfg.Providers.Gemini.APIKey != ""
 		hasZhipu := cfg.Providers.Zhipu.APIKey != ""
+		hasZAI := cfg.Providers.ZAI.APIKey != ""
 		hasGroq := cfg.Providers.Groq.APIKey != ""
 		hasVLLM := cfg.Providers.VLLM.APIBase != ""
 
@@ -676,6 +729,7 @@ func statusCmd() {
 		fmt.Println("OpenAI API:", status(hasOpenAI))
 		fmt.Println("Gemini API:", status(hasGemini))
 		fmt.Println("Zhipu API:", status(hasZhipu))
+		fmt.Println("Z.AI API:", status(hasZAI))
 		fmt.Println("Groq API:", status(hasGroq))
 		if hasVLLM {
 			fmt.Printf("vLLM/Local: ✓ %s\n", cfg.Providers.VLLM.APIBase)

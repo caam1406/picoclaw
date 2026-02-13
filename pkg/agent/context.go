@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
@@ -15,10 +16,11 @@ import (
 )
 
 type ContextBuilder struct {
-	workspace    string
-	skillsLoader *skills.SkillsLoader
-	memory       *MemoryStore
-	tools        *tools.ToolRegistry // Direct reference to tool registry
+	workspace     string
+	skillsLoader  *skills.SkillsLoader
+	memory        *MemoryStore
+	tools         *tools.ToolRegistry  // Direct reference to tool registry
+	contactsStore *contacts.Store      // Per-contact instructions store
 }
 
 func getGlobalConfigDir() string {
@@ -46,6 +48,11 @@ func NewContextBuilder(workspace string) *ContextBuilder {
 // SetToolsRegistry sets the tools registry for dynamic tool summary generation.
 func (cb *ContextBuilder) SetToolsRegistry(registry *tools.ToolRegistry) {
 	cb.tools = registry
+}
+
+// SetContactsStore sets the contacts store for per-contact instruction injection.
+func (cb *ContextBuilder) SetContactsStore(store *contacts.Store) {
+	cb.contactsStore = store
 }
 
 func (cb *ContextBuilder) getIdentity() string {
@@ -165,6 +172,16 @@ func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary str
 	// Add Current Session info if provided
 	if channel != "" && chatID != "" {
 		systemPrompt += fmt.Sprintf("\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
+
+		// Inject per-contact custom instructions if available, otherwise try default instructions
+		if cb.contactsStore != nil {
+			sessionKey := fmt.Sprintf("%s:%s", channel, chatID)
+			if instruction := cb.contactsStore.GetForSession(sessionKey); instruction != "" {
+				systemPrompt += "\n\n## Contact-Specific Instructions\n\n" + instruction
+			} else if defaultInst := cb.contactsStore.GetDefault(channel); defaultInst != "" {
+				systemPrompt += "\n\n## Default Instructions\n\n" + defaultInst
+			}
+		}
 	}
 
 	// Log system prompt summary for debugging (debug mode only)
