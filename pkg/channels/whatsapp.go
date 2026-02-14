@@ -35,6 +35,7 @@ type WhatsAppChannel struct {
 	transcriber *voice.GroqTranscriber
 	mu          sync.Mutex
 	cancelFunc  context.CancelFunc
+	sentIDs     sync.Map // tracks message IDs sent by the bot (for self-chat dedup)
 }
 
 // NewWhatsAppChannel creates a new WhatsApp channel instance.
@@ -279,16 +280,50 @@ func (c *WhatsAppChannel) handleIncomingMessage(evt *events.Message) {
 	if evt.Info.Chat.Server == "broadcast" {
 		return
 	}
+
+	// Determine self-chat: compare chat JID against both the phone-number JID and the LID.
+	// WhatsApp may deliver self-chat messages using either format depending on the addressing mode.
+	isSelfChat := false
+	if c.client != nil && c.client.Store != nil {
+		chat := evt.Info.Chat
+		// Check against phone-number JID (e.g. 5511999999999@s.whatsapp.net)
+		if c.client.Store.ID != nil {
+			pnJID := *c.client.Store.ID
+			if chat.User == pnJID.User && chat.Server == pnJID.Server {
+				isSelfChat = true
+			}
+		}
+		// Check against LID (e.g. 157539501101144@lid)
+		if !isSelfChat {
+			lidJID := c.client.Store.GetLID()
+			if !lidJID.IsEmpty() && chat.User == lidJID.User && chat.Server == lidJID.Server {
+				isSelfChat = true
+			}
+		}
+	}
+
 	// Skip own messages unless it's a self-chat (user messaging their own number so the agent can read)
-	isSelfChat := c.client != nil && c.client.Store.ID != nil &&
-		evt.Info.Chat.User == c.client.Store.ID.User &&
-		evt.Info.Chat.Server == c.client.Store.ID.Server
 	if evt.Info.IsFromMe && !isSelfChat {
 		return
 	}
 
+	// In self-chat, skip messages that the bot itself sent (prevent infinite loop).
+	if isSelfChat {
+		if _, wasSent := c.sentIDs.LoadAndDelete(evt.Info.ID); wasSent {
+			return
+		}
+	}
+
 	senderID := evt.Info.Sender.User
 	chatID := evt.Info.Chat.String()
+
+	// For self-chat: normalize chatID and senderID to the phone-number JID
+	// so that session keys, contacts lookup, and Send() all use a consistent format.
+	if isSelfChat && c.client.Store.ID != nil {
+		selfJID := types.NewJID(c.client.Store.ID.User, types.DefaultUserServer) // e.g. 5511982650676@s.whatsapp.net
+		chatID = selfJID.String()
+		senderID = c.client.Store.ID.User
+	}
 
 	// Extract text
 	content := c.extractTextContent(evt.Message)
@@ -619,6 +654,14 @@ func (c *WhatsAppChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	if err != nil {
 		return fmt.Errorf("failed to send whatsapp message: %w", err)
 	}
+
+	// Track sent message ID so self-chat can ignore the echo.
+	c.sentIDs.Store(resp.ID, true)
+	// Auto-expire after 30s to prevent memory leak if the echo never arrives.
+	go func(id string) {
+		time.Sleep(30 * time.Second)
+		c.sentIDs.Delete(id)
+	}(resp.ID)
 
 	// Clear typing indicator
 	_ = c.client.SendChatPresence(ctx, targetJID, types.ChatPresencePaused, "")
