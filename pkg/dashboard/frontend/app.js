@@ -182,16 +182,29 @@ function rebuildContactsIndex(contacts) {
 
 function resolveInboundSender(inbound) {
   const channel = String(inbound.channel || '').toLowerCase();
+  const metadata = inbound.metadata || {};
   const senderID = String(inbound.sender_id || '').trim();
-  if (!senderID) return '';
+  const chatID = String(inbound.chat_id || '').trim();
 
-  const exactKey = channel + ':' + senderID;
+  const senderCandidates = [
+    senderID,
+    String(metadata.sender_phone || '').trim(),
+    String(metadata.sender_id || '').trim(),
+    String(metadata.sender_jid || '').trim(),
+    chatID,
+    String(metadata.chat_id || '').trim(),
+    String(metadata.chat_jid || '').trim()
+  ].filter(Boolean);
+
+  const resolvedID = senderCandidates.length > 0 ? senderCandidates[0] : '';
+  if (!resolvedID) return '';
+
+  const exactKey = channel + ':' + resolvedID;
   if (contactsByChannelID.has(exactKey)) return contactsByChannelID.get(exactKey);
 
-  const normalizedKey = contactMapKey(channel, senderID);
+  const normalizedKey = contactMapKey(channel, resolvedID);
   if (contactsByChannelID.has(normalizedKey)) return contactsByChannelID.get(normalizedKey);
 
-  const metadata = inbound.metadata || {};
   const metadataName = (
     metadata.display_name ||
     metadata.sender_name ||
@@ -202,8 +215,8 @@ function resolveInboundSender(inbound) {
   ).trim();
   if (metadataName) return metadataName;
 
-  if (channel === 'whatsapp') return normalizeContactID(channel, senderID);
-  return senderID;
+  if (channel === 'whatsapp') return normalizeContactID(channel, resolvedID);
+  return resolvedID;
 }
 
 // ─── Load Data ──────────────────────────────────────────────────────
