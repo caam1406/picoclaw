@@ -165,19 +165,25 @@ func (s *Server) handleContactDetail(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPut:
 		var body struct {
-			DisplayName  string `json:"display_name"`
-			Instructions string `json:"instructions"`
+			DisplayName          string `json:"display_name"`
+			Instructions         string `json:"instructions"`
+			ResponseDelaySeconds int    `json:"response_delay_seconds"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
 			return
 		}
+		if body.ResponseDelaySeconds < 0 || body.ResponseDelaySeconds > 3600 {
+			http.Error(w, `{"error":"response_delay_seconds must be between 0 and 3600"}`, http.StatusBadRequest)
+			return
+		}
 
 		ci := contacts.ContactInstruction{
-			ContactID:    contactID,
-			Channel:      channel,
-			DisplayName:  body.DisplayName,
-			Instructions: body.Instructions,
+			ContactID:            contactID,
+			Channel:              channel,
+			DisplayName:          body.DisplayName,
+			Instructions:         body.Instructions,
+			ResponseDelaySeconds: body.ResponseDelaySeconds,
 		}
 
 		if err := s.contactsStore.Set(ci); err != nil {

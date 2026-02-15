@@ -7,6 +7,7 @@ let currentDefault = null; // channel key of default being edited
 let currentConfig = null;
 let currentSecrets = {};
 let liveMessages = [];
+let contactsByChannelID = new Map();
 let qrState = null;
 let waSelfJid = ''; // logged-in WhatsApp number (JID) when channel is connected, for "add my number"
 const MAX_LIVE_MESSAGES = 200;
@@ -111,7 +112,7 @@ function handleBusEvent(event) {
 
   if (event.type === 'inbound' && event.inbound) {
     channel = event.inbound.channel;
-    sender = event.inbound.sender_id;
+    sender = resolveInboundSender(event.inbound);
     content = event.inbound.content;
   } else if (event.type === 'outbound' && event.outbound) {
     channel = event.outbound.channel;
@@ -136,14 +137,86 @@ function renderLiveMessages() {
   container.innerHTML = liveMessages.map(m => {
     const dirClass = m.type === 'inbound' ? 'inbound' : 'outbound';
     const dirLabel = m.type === 'inbound' ? 'IN' : 'OUT';
+    const senderLabel = m.type === 'inbound' ? (m.sender || 'desconhecido') : 'picoclaw';
     const preview = m.content.length > 200 ? m.content.slice(0, 200) + '...' : m.content;
     return `<div class="msg-item">
       <span class="msg-time">${m.time}</span>
       <span class="msg-direction ${dirClass}">${dirLabel}</span>
       <span class="msg-channel">${m.channel}</span>
+      <span class="msg-sender">${escapeHtml(senderLabel)}</span>
       <span class="msg-content">${escapeHtml(preview)}</span>
     </div>`;
   }).join('');
+}
+
+function normalizeContactID(channel, id) {
+  if (!id) return '';
+  const raw = String(id).trim();
+  if (!raw) return '';
+  if (channel === 'whatsapp') return raw.replace(/@.*/, '');
+  return raw;
+}
+
+function contactMapKey(channel, id) {
+  return String(channel || '').toLowerCase() + ':' + normalizeContactID(channel, id);
+}
+
+function rebuildContactsIndex(contacts) {
+  contactsByChannelID = new Map();
+  if (!Array.isArray(contacts)) return;
+
+  contacts.forEach(c => {
+    if (!c || !c.channel || !c.contact_id) return;
+    const displayName = (c.display_name || '').trim();
+    if (!displayName) return;
+
+    const exactKey = String(c.channel).toLowerCase() + ':' + String(c.contact_id).trim();
+    contactsByChannelID.set(exactKey, displayName);
+
+    const normalizedKey = contactMapKey(c.channel, c.contact_id);
+    if (normalizedKey !== exactKey) {
+      contactsByChannelID.set(normalizedKey, displayName);
+    }
+  });
+}
+
+function resolveInboundSender(inbound) {
+  const channel = String(inbound.channel || '').toLowerCase();
+  const metadata = inbound.metadata || {};
+  const senderID = String(inbound.sender_id || '').trim();
+  const chatID = String(inbound.chat_id || '').trim();
+
+  const senderCandidates = [
+    senderID,
+    String(metadata.sender_phone || '').trim(),
+    String(metadata.sender_id || '').trim(),
+    String(metadata.sender_jid || '').trim(),
+    chatID,
+    String(metadata.chat_id || '').trim(),
+    String(metadata.chat_jid || '').trim()
+  ].filter(Boolean);
+
+  const resolvedID = senderCandidates.length > 0 ? senderCandidates[0] : '';
+  if (!resolvedID) return '';
+
+  const exactKey = channel + ':' + resolvedID;
+  if (contactsByChannelID.has(exactKey)) return contactsByChannelID.get(exactKey);
+
+  const normalizedKey = contactMapKey(channel, resolvedID);
+  if (contactsByChannelID.has(normalizedKey)) return contactsByChannelID.get(normalizedKey);
+
+  const metadataName = (
+    metadata.display_name ||
+    metadata.sender_name ||
+    metadata.push_name ||
+    metadata.first_name ||
+    metadata.username ||
+    ''
+  ).trim();
+  if (metadataName) return metadataName;
+
+  if (channel === 'whatsapp') return normalizeContactID(channel, resolvedID);
+  return resolvedID;
 }
 
 // ─── Load Data ──────────────────────────────────────────────────────
@@ -225,6 +298,8 @@ function loadChannels() {
 
 function loadContacts() {
   apiFetch('/api/v1/contacts').then(data => {
+    rebuildContactsIndex(data);
+
     const list = document.getElementById('contacts-list');
     if (!data || data.length === 0) {
       list.innerHTML = '<div style="color:var(--text-muted);padding:8px 12px;font-size:13px">Nenhum contato</div>';
@@ -264,6 +339,7 @@ function editContact(channel, id) {
     document.getElementById('contact-id').value = data.contact_id;
     document.getElementById('contact-name').value = data.display_name || '';
     document.getElementById('contact-instructions').value = data.instructions || '';
+    document.getElementById('contact-response-delay').value = toInt(data.response_delay_seconds, 0);
     const isGroup = (data.contact_id && data.contact_id.includes('@g.us'));
     document.getElementById('contact-title').textContent = data.display_name || data.contact_id;
     document.getElementById('contact-subtitle').textContent = data.channel + ' / ' + data.contact_id + (isGroup ? ' (grupo)' : '');
@@ -422,7 +498,7 @@ function createContact() {
 
   apiFetch('/api/v1/contacts/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id), {
     method: 'PUT',
-    body: JSON.stringify({ display_name: name, instructions: '' })
+    body: JSON.stringify({ display_name: name, instructions: '', response_delay_seconds: 0 })
   }).then(() => {
     closeModal();
     loadContacts();
@@ -435,6 +511,7 @@ function createContact() {
     document.getElementById('contact-id').disabled = true;
     document.getElementById('contact-name').value = name;
     document.getElementById('contact-instructions').value = '';
+    document.getElementById('contact-response-delay').value = 0;
     const isGroup = id.includes('@g.us');
     document.getElementById('contact-title').textContent = name || id;
     document.getElementById('contact-subtitle').textContent = channel + ' / ' + id + (isGroup ? ' (grupo)' : '');
@@ -451,10 +528,18 @@ function saveContact() {
 
   const name = document.getElementById('contact-name').value.trim();
   const instructions = document.getElementById('contact-instructions').value.trim();
+  let responseDelaySeconds = toInt(document.getElementById('contact-response-delay').value, 0);
+  if (responseDelaySeconds < 0) responseDelaySeconds = 0;
+  if (responseDelaySeconds > 3600) responseDelaySeconds = 3600;
+  document.getElementById('contact-response-delay').value = responseDelaySeconds;
 
   apiFetch('/api/v1/contacts/' + encodeURIComponent(currentContact.channel) + '/' + encodeURIComponent(currentContact.id), {
     method: 'PUT',
-    body: JSON.stringify({ display_name: name, instructions: instructions })
+    body: JSON.stringify({
+      display_name: name,
+      instructions: instructions,
+      response_delay_seconds: responseDelaySeconds
+    })
   }).then(() => {
     toast('Instrucoes salvas');
     loadContacts();

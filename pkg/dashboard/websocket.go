@@ -3,12 +3,15 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
@@ -34,18 +37,20 @@ type Hub struct {
 	unregister chan *Client
 	broadcast  chan []byte
 	msgBus     *bus.MessageBus
+	contacts   *contacts.Store
 	mu         sync.RWMutex
 	latestQR   *bus.QRCodeEvent
 	qrMu       sync.RWMutex
 }
 
-func NewHub(msgBus *bus.MessageBus) *Hub {
+func NewHub(msgBus *bus.MessageBus, contactsStore *contacts.Store) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan []byte, 256),
 		msgBus:     msgBus,
+		contacts:   contactsStore,
 	}
 }
 
@@ -81,6 +86,24 @@ func (h *Hub) Run(ctx context.Context) {
 			logger.DebugC("dashboard", "WebSocket client disconnected")
 
 		case event := <-events:
+			if event.Type == "inbound" && event.Inbound != nil {
+				enriched := *event.Inbound
+				sender := h.resolveSenderLabel(&enriched)
+				if sender != "" {
+					if enriched.Metadata == nil {
+						enriched.Metadata = map[string]string{}
+					}
+					enriched.Metadata["sender_display"] = sender
+
+					// Backward compatibility: old frontend versions only render content.
+					prefix := fmt.Sprintf("[%s] ", sender)
+					if !strings.HasPrefix(enriched.Content, prefix) {
+						enriched.Content = prefix + enriched.Content
+					}
+				}
+				event.Inbound = &enriched
+			}
+
 			// Cache latest QR state for late-joining clients
 			if event.Type == "qr_code" && event.QRCode != nil {
 				h.qrMu.Lock()
@@ -108,6 +131,87 @@ func (h *Hub) Run(ctx context.Context) {
 			h.mu.RUnlock()
 		}
 	}
+}
+
+func (h *Hub) resolveSenderLabel(in *bus.InboundMessage) string {
+	channel := strings.ToLower(strings.TrimSpace(in.Channel))
+	metadata := in.Metadata
+
+	idCandidates := []string{
+		strings.TrimSpace(in.SenderID),
+		strings.TrimSpace(metadata["sender_phone"]),
+		strings.TrimSpace(metadata["sender_id"]),
+		strings.TrimSpace(metadata["sender_jid"]),
+		strings.TrimSpace(in.ChatID),
+		strings.TrimSpace(metadata["chat_id"]),
+		strings.TrimSpace(metadata["chat_jid"]),
+	}
+
+	if h.contacts != nil {
+		for _, id := range idCandidates {
+			if name := h.lookupContactName(channel, id); name != "" {
+				return name
+			}
+		}
+	}
+
+	nameCandidates := []string{
+		strings.TrimSpace(metadata["display_name"]),
+		strings.TrimSpace(metadata["sender_name"]),
+		strings.TrimSpace(metadata["push_name"]),
+		strings.TrimSpace(metadata["first_name"]),
+		strings.TrimSpace(metadata["username"]),
+	}
+	for _, n := range nameCandidates {
+		if n != "" {
+			return n
+		}
+	}
+
+	for _, id := range idCandidates {
+		if id == "" {
+			continue
+		}
+		if channel == "whatsapp" {
+			return normalizeWhatsAppID(id)
+		}
+		return id
+	}
+	return ""
+}
+
+func (h *Hub) lookupContactName(channel, id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || h.contacts == nil {
+		return ""
+	}
+
+	tryIDs := []string{id}
+	if channel == "whatsapp" {
+		norm := normalizeWhatsAppID(id)
+		if norm != "" && norm != id {
+			tryIDs = append(tryIDs, norm, norm+"@s.whatsapp.net")
+		}
+	}
+
+	for _, candidate := range tryIDs {
+		ci := h.contacts.Get(channel, candidate)
+		if ci != nil && strings.TrimSpace(ci.DisplayName) != "" {
+			return strings.TrimSpace(ci.DisplayName)
+		}
+	}
+	return ""
+}
+
+func normalizeWhatsAppID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if idx := strings.Index(id, "@"); idx >= 0 {
+		return id[:idx]
+	}
+	return id
 }
 
 // GetLatestQR returns the latest pending QR code event, or nil if none.

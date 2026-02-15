@@ -31,15 +31,15 @@ type AgentLoop struct {
 	provider       providers.LLMProvider
 	workspace      string
 	model          string
-	contextWindow  int           // Maximum context window size in tokens
+	contextWindow  int // Maximum context window size in tokens
 	maxIterations  int
 	sessions       *session.SessionManager
 	contextBuilder *ContextBuilder
 	tools          *tools.ToolRegistry
 	contactsStore  *contacts.Store // Per-contact gate: only registered contacts get responses
-	contactsOnly   bool           // When true, only registered contacts get responses
+	contactsOnly   bool            // When true, only registered contacts get responses
 	running        bool
-	summarizing    sync.Map      // Tracks which sessions are currently being summarized
+	summarizing    sync.Map // Tracks which sessions are currently being summarized
 }
 
 // processOptions configures how a message is processed
@@ -128,11 +128,11 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 			}
 
 			if response != "" {
-				al.bus.PublishOutbound(bus.OutboundMessage{
+				al.publishOutboundWithContactDelay(ctx, bus.OutboundMessage{
 					Channel: msg.Channel,
 					ChatID:  msg.ChatID,
 					Content: response,
-				})
+				}, msg.SessionKey)
 			}
 		}
 	}
@@ -302,11 +302,11 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 
 	// 8. Optional: send response via bus
 	if opts.SendResponse {
-		al.bus.PublishOutbound(bus.OutboundMessage{
+		al.publishOutboundWithContactDelay(ctx, bus.OutboundMessage{
 			Channel: opts.Channel,
 			ChatID:  opts.ChatID,
 			Content: finalContent,
-		})
+		}, opts.SessionKey)
 	}
 
 	// 9. Log response
@@ -319,6 +319,32 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		})
 
 	return finalContent, nil
+}
+
+func (al *AgentLoop) publishOutboundWithContactDelay(ctx context.Context, msg bus.OutboundMessage, sessionKey string) {
+	if al.contactsStore != nil && sessionKey != "" {
+		ci := al.contactsStore.GetContactForSession(sessionKey)
+		if ci != nil && ci.ResponseDelaySeconds > 0 {
+			delay := ci.ResponseDelaySeconds
+			logger.InfoCF("agent", "Applying contact response delay", map[string]interface{}{
+				"session_key":            sessionKey,
+				"channel":                msg.Channel,
+				"chat_id":                msg.ChatID,
+				"response_delay_seconds": delay,
+			})
+
+			timer := time.NewTimer(time.Duration(delay) * time.Second)
+			defer timer.Stop()
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+			}
+		}
+	}
+
+	al.bus.PublishOutbound(msg)
 }
 
 // runLLMIteration executes the LLM call loop with tool handling.

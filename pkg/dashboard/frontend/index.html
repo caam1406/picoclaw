@@ -115,6 +115,11 @@
           <label>Instrucoes Personalizadas para o Agente</label>
           <textarea id="contact-instructions" placeholder="Ex: Responda sempre em ingles. Seja formal e objetivo. O nome desta pessoa e Joao e ele prefere respostas curtas."></textarea>
         </div>
+        <div class="form-group">
+          <label>Delay de Resposta (segundos)</label>
+          <input type="number" id="contact-response-delay" min="0" max="3600" step="1" value="0" placeholder="0">
+          <div class="form-hint">Atraso aplicado antes de enviar a resposta para este contato.</div>
+        </div>
         <div class="form-actions">
           <button class="btn btn-primary" onclick="saveContact()">Salvar</button>
           <button class="btn btn-danger" id="btn-delete-contact" onclick="deleteContact()">Excluir</button>

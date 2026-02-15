@@ -11,12 +11,13 @@ import (
 )
 
 type ContactInstruction struct {
-	ContactID    string    `json:"contact_id"`
-	Channel      string    `json:"channel"`
-	DisplayName  string    `json:"display_name"`
-	Instructions string    `json:"instructions"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ContactID            string    `json:"contact_id"`
+	Channel              string    `json:"channel"`
+	DisplayName          string    `json:"display_name"`
+	Instructions         string    `json:"instructions"`
+	ResponseDelaySeconds int       `json:"response_delay_seconds,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type Store struct {
@@ -61,6 +62,7 @@ func (s *Store) Set(ci ContactInstruction) error {
 	if ok {
 		existing.DisplayName = ci.DisplayName
 		existing.Instructions = ci.Instructions
+		existing.ResponseDelaySeconds = ci.ResponseDelaySeconds
 		existing.UpdatedAt = time.Now()
 	} else {
 		now := time.Now()
@@ -101,29 +103,17 @@ func (s *Store) GetForSession(sessionKey string) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Try exact match first
-	if ci, ok := s.instructions[sessionKey]; ok {
+	if ci := s.getContactForSessionLocked(sessionKey); ci != nil {
 		return ci.Instructions
 	}
-
-	// Parse channel and chatID from session key
-	idx := strings.Index(sessionKey, ":")
-	if idx <= 0 {
-		return ""
-	}
-	channel := sessionKey[:idx]
-	chatID := sessionKey[idx+1:]
-
-	// Try without JID suffix (e.g., strip @s.whatsapp.net)
-	if atIdx := strings.Index(chatID, "@"); atIdx > 0 {
-		stripped := chatID[:atIdx]
-		key := makeKey(channel, stripped)
-		if ci, ok := s.instructions[key]; ok {
-			return ci.Instructions
-		}
-	}
-
 	return ""
+}
+
+// GetContactForSession returns full contact settings by session key.
+func (s *Store) GetContactForSession(sessionKey string) *ContactInstruction {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.getContactForSessionLocked(sessionKey)
 }
 
 // IsRegistered checks if a contact exists in the store by session key.
@@ -133,27 +123,9 @@ func (s *Store) IsRegistered(sessionKey string) bool {
 	defer s.mu.RUnlock()
 
 	// Try exact match
-	if _, ok := s.instructions[sessionKey]; ok {
+	if s.getContactForSessionLocked(sessionKey) != nil {
 		return true
 	}
-
-	// Parse channel and chatID
-	idx := strings.Index(sessionKey, ":")
-	if idx <= 0 {
-		return false
-	}
-	chatID := sessionKey[idx+1:]
-	channel := sessionKey[:idx]
-
-	// Try without JID suffix
-	if atIdx := strings.Index(chatID, "@"); atIdx > 0 {
-		stripped := chatID[:atIdx]
-		key := makeKey(channel, stripped)
-		if _, ok := s.instructions[key]; ok {
-			return true
-		}
-	}
-
 	return false
 }
 
@@ -259,4 +231,30 @@ func (s *Store) saveDefaultsLocked() error {
 	}
 
 	return os.WriteFile(s.defaultsFilePath, data, 0644)
+}
+
+func (s *Store) getContactForSessionLocked(sessionKey string) *ContactInstruction {
+	// Try exact match first
+	if ci, ok := s.instructions[sessionKey]; ok {
+		return ci
+	}
+
+	// Parse channel and chatID from session key
+	idx := strings.Index(sessionKey, ":")
+	if idx <= 0 {
+		return nil
+	}
+	channel := sessionKey[:idx]
+	chatID := sessionKey[idx+1:]
+
+	// Try without JID suffix (e.g., strip @s.whatsapp.net)
+	if atIdx := strings.Index(chatID, "@"); atIdx > 0 {
+		stripped := chatID[:atIdx]
+		key := makeKey(channel, stripped)
+		if ci, ok := s.instructions[key]; ok {
+			return ci
+		}
+	}
+
+	return nil
 }

@@ -71,7 +71,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.startTime = time.Now()
 
 	// Create WebSocket hub
-	s.hub = NewHub(s.msgBus)
+	s.hub = NewHub(s.msgBus, s.contactsStore)
 	go s.hub.Run(ctx)
 
 	// Create HTTP mux
@@ -107,7 +107,8 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create frontend sub-filesystem: %w", err)
 	}
-	mux.Handle("/", http.FileServer(http.FS(frontendSub)))
+	staticHandler := http.FileServer(http.FS(frontendSub))
+	mux.Handle("/", noCacheStatic(staticHandler))
 
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 	s.httpServer = &http.Server{
@@ -144,6 +145,15 @@ func (s *Server) Stop() {
 		s.httpServer.Shutdown(ctx)
 		logger.InfoC("dashboard", "Dashboard server stopped")
 	}
+}
+
+func noCacheStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // authMiddleware wraps a handler with bearer token authentication.
