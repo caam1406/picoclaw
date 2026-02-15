@@ -7,6 +7,7 @@ let currentDefault = null; // channel key of default being edited
 let currentConfig = null;
 let currentSecrets = {};
 let liveMessages = [];
+let contactsByChannelID = new Map();
 let qrState = null;
 let waSelfJid = ''; // logged-in WhatsApp number (JID) when channel is connected, for "add my number"
 const MAX_LIVE_MESSAGES = 200;
@@ -111,7 +112,7 @@ function handleBusEvent(event) {
 
   if (event.type === 'inbound' && event.inbound) {
     channel = event.inbound.channel;
-    sender = event.inbound.sender_id;
+    sender = resolveInboundSender(event.inbound);
     content = event.inbound.content;
   } else if (event.type === 'outbound' && event.outbound) {
     channel = event.outbound.channel;
@@ -136,14 +137,73 @@ function renderLiveMessages() {
   container.innerHTML = liveMessages.map(m => {
     const dirClass = m.type === 'inbound' ? 'inbound' : 'outbound';
     const dirLabel = m.type === 'inbound' ? 'IN' : 'OUT';
+    const senderLabel = m.type === 'inbound' ? (m.sender || 'desconhecido') : 'picoclaw';
     const preview = m.content.length > 200 ? m.content.slice(0, 200) + '...' : m.content;
     return `<div class="msg-item">
       <span class="msg-time">${m.time}</span>
       <span class="msg-direction ${dirClass}">${dirLabel}</span>
       <span class="msg-channel">${m.channel}</span>
+      <span class="msg-sender">${escapeHtml(senderLabel)}</span>
       <span class="msg-content">${escapeHtml(preview)}</span>
     </div>`;
   }).join('');
+}
+
+function normalizeContactID(channel, id) {
+  if (!id) return '';
+  const raw = String(id).trim();
+  if (!raw) return '';
+  if (channel === 'whatsapp') return raw.replace(/@.*/, '');
+  return raw;
+}
+
+function contactMapKey(channel, id) {
+  return String(channel || '').toLowerCase() + ':' + normalizeContactID(channel, id);
+}
+
+function rebuildContactsIndex(contacts) {
+  contactsByChannelID = new Map();
+  if (!Array.isArray(contacts)) return;
+
+  contacts.forEach(c => {
+    if (!c || !c.channel || !c.contact_id) return;
+    const displayName = (c.display_name || '').trim();
+    if (!displayName) return;
+
+    const exactKey = String(c.channel).toLowerCase() + ':' + String(c.contact_id).trim();
+    contactsByChannelID.set(exactKey, displayName);
+
+    const normalizedKey = contactMapKey(c.channel, c.contact_id);
+    if (normalizedKey !== exactKey) {
+      contactsByChannelID.set(normalizedKey, displayName);
+    }
+  });
+}
+
+function resolveInboundSender(inbound) {
+  const channel = String(inbound.channel || '').toLowerCase();
+  const senderID = String(inbound.sender_id || '').trim();
+  if (!senderID) return '';
+
+  const exactKey = channel + ':' + senderID;
+  if (contactsByChannelID.has(exactKey)) return contactsByChannelID.get(exactKey);
+
+  const normalizedKey = contactMapKey(channel, senderID);
+  if (contactsByChannelID.has(normalizedKey)) return contactsByChannelID.get(normalizedKey);
+
+  const metadata = inbound.metadata || {};
+  const metadataName = (
+    metadata.display_name ||
+    metadata.sender_name ||
+    metadata.push_name ||
+    metadata.first_name ||
+    metadata.username ||
+    ''
+  ).trim();
+  if (metadataName) return metadataName;
+
+  if (channel === 'whatsapp') return normalizeContactID(channel, senderID);
+  return senderID;
 }
 
 // ─── Load Data ──────────────────────────────────────────────────────
@@ -225,6 +285,8 @@ function loadChannels() {
 
 function loadContacts() {
   apiFetch('/api/v1/contacts').then(data => {
+    rebuildContactsIndex(data);
+
     const list = document.getElementById('contacts-list');
     if (!data || data.length === 0) {
       list.innerHTML = '<div style="color:var(--text-muted);padding:8px 12px;font-size:13px">Nenhum contato</div>';
