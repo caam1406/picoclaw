@@ -339,6 +339,7 @@ function editContact(channel, id) {
     document.getElementById('contact-id').value = data.contact_id;
     document.getElementById('contact-name').value = data.display_name || '';
     document.getElementById('contact-instructions').value = data.instructions || '';
+    document.getElementById('contact-response-delay').value = toInt(data.response_delay_seconds, 0);
     const isGroup = (data.contact_id && data.contact_id.includes('@g.us'));
     document.getElementById('contact-title').textContent = data.display_name || data.contact_id;
     document.getElementById('contact-subtitle').textContent = data.channel + ' / ' + data.contact_id + (isGroup ? ' (grupo)' : '');
@@ -497,7 +498,7 @@ function createContact() {
 
   apiFetch('/api/v1/contacts/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id), {
     method: 'PUT',
-    body: JSON.stringify({ display_name: name, instructions: '' })
+    body: JSON.stringify({ display_name: name, instructions: '', response_delay_seconds: 0 })
   }).then(() => {
     closeModal();
     loadContacts();
@@ -510,6 +511,7 @@ function createContact() {
     document.getElementById('contact-id').disabled = true;
     document.getElementById('contact-name').value = name;
     document.getElementById('contact-instructions').value = '';
+    document.getElementById('contact-response-delay').value = 0;
     const isGroup = id.includes('@g.us');
     document.getElementById('contact-title').textContent = name || id;
     document.getElementById('contact-subtitle').textContent = channel + ' / ' + id + (isGroup ? ' (grupo)' : '');
@@ -526,10 +528,18 @@ function saveContact() {
 
   const name = document.getElementById('contact-name').value.trim();
   const instructions = document.getElementById('contact-instructions').value.trim();
+  let responseDelaySeconds = toInt(document.getElementById('contact-response-delay').value, 0);
+  if (responseDelaySeconds < 0) responseDelaySeconds = 0;
+  if (responseDelaySeconds > 3600) responseDelaySeconds = 3600;
+  document.getElementById('contact-response-delay').value = responseDelaySeconds;
 
   apiFetch('/api/v1/contacts/' + encodeURIComponent(currentContact.channel) + '/' + encodeURIComponent(currentContact.id), {
     method: 'PUT',
-    body: JSON.stringify({ display_name: name, instructions: instructions })
+    body: JSON.stringify({
+      display_name: name,
+      instructions: instructions,
+      response_delay_seconds: responseDelaySeconds
+    })
   }).then(() => {
     toast('Instrucoes salvas');
     loadContacts();
