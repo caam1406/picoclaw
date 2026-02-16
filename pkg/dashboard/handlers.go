@@ -383,7 +383,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 
 		writeJSON(w, map[string]string{
 			"status":  "updated",
-			"message": "Configuration updated. Restart required for changes to take effect.",
+			"message": "Configuration updated. Most LLM settings apply immediately; some channel/storage changes may still require restart.",
 		})
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)

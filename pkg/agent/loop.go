@@ -29,6 +29,7 @@ import (
 
 type AgentLoop struct {
 	agentID        string
+	cfg            *config.Config
 	bus            *bus.MessageBus
 	provider       providers.LLMProvider
 	workspace      string
@@ -135,6 +136,7 @@ func NewAgentLoopForAgent(cfg *config.Config, msgBus *bus.MessageBus, provider p
 
 	return &AgentLoop{
 		agentID:        resolved.AgentID,
+		cfg:            cfg,
 		bus:            msgBus,
 		provider:       provider,
 		workspace:      workspace,
@@ -461,14 +463,25 @@ func (al *AgentLoop) publishOutboundWithContactDelay(ctx context.Context, msg bu
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions, mcpPolicy sessionMCPPolicy) (string, int, error) {
 	iteration := 0
 	var finalContent string
+	currentModel := al.model
+	currentMaxIterations := al.maxIterations
+	if al.cfg != nil {
+		resolved := al.cfg.ResolveAgentConfig(al.AgentID())
+		if strings.TrimSpace(resolved.Settings.Model) != "" {
+			currentModel = resolved.Settings.Model
+		}
+		if resolved.Settings.MaxToolIterations > 0 {
+			currentMaxIterations = resolved.Settings.MaxToolIterations
+		}
+	}
 
-	for iteration < al.maxIterations {
+	for iteration < currentMaxIterations {
 		iteration++
 
 		logger.DebugCF("agent", "LLM iteration",
 			map[string]interface{}{
 				"iteration": iteration,
-				"max":       al.maxIterations,
+				"max":       currentMaxIterations,
 			})
 
 		// Build tool definitions
@@ -489,7 +502,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		logger.DebugCF("agent", "LLM request",
 			map[string]interface{}{
 				"iteration":         iteration,
-				"model":             al.model,
+				"model":             currentModel,
 				"messages_count":    len(messages),
 				"tools_count":       len(providerToolDefs),
 				"max_tokens":        8192,
@@ -506,7 +519,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			})
 
 		// Call LLM
-		response, err := al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
+		response, err := al.provider.Chat(ctx, messages, providerToolDefs, currentModel, map[string]interface{}{
 			"max_tokens":  8192,
 			"temperature": 0.7,
 		})

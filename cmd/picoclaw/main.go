@@ -333,12 +333,8 @@ func agentCmd() {
 		fmt.Printf("✅ Dashboard token generated: %s\n", token)
 	}
 
-	provider, err := providers.CreateProvider(cfg)
-	if err != nil {
-		fmt.Printf("Error creating provider: %v\n", err)
-		os.Exit(1)
-	}
-
+	// Dynamic provider enables live LLM config updates from dashboard without gateway restart.
+	provider := providers.NewDynamicProvider(cfg)
 	msgBus := bus.NewMessageBus()
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
 
@@ -468,18 +464,8 @@ func gatewayCmd() {
 		os.Exit(1)
 	}
 
-	provider, err := providers.CreateProvider(cfg)
-	if err != nil {
-		// Quando não há API key configurada, iniciamos em modo apenas-dashboard
-		if strings.Contains(err.Error(), "no API key configured") {
-			fmt.Printf("⚠ %v\n", err)
-			fmt.Println("Starting gateway in dashboard-only mode. Configure your API keys in the dashboard, then restart gateway.")
-			startDashboardOnly(cfg)
-			return
-		}
-		fmt.Printf("Error creating provider: %v\n", err)
-		os.Exit(1)
-	}
+	// Dynamic provider enables live LLM config updates from dashboard without gateway restart.
+	provider := providers.NewDynamicProvider(cfg)
 
 	msgBus := bus.NewMessageBus()
 	contactsStore := contacts.NewStore(cfg.WorkspacePath())

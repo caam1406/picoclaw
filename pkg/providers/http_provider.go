@@ -171,8 +171,17 @@ func (p *HTTPProvider) GetDefaultModel() string {
 }
 
 func CreateProvider(cfg *config.Config) (LLMProvider, error) {
-	model := cfg.Agents.Defaults.Model
+	if cfg == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
+	snapshot := cfg.Clone()
+	return CreateProviderForModel(snapshot, snapshot.Agents.Defaults.Model)
+}
 
+func CreateProviderForModel(cfg *config.Config, model string) (LLMProvider, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
 	var apiKey, apiBase string
 
 	lowerModel := strings.ToLower(model)
