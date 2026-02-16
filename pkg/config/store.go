@@ -205,27 +205,67 @@ func ensureConfigSchema(ctx context.Context, db *sql.DB) error {
 
 func getMasterKey() ([]byte, error) {
 	encoded, err := keyring.Get(keyringService, keyringConfigKey)
-	if err != nil {
-		if errors.Is(err, keyring.ErrNotFound) {
-			key := make([]byte, 32)
-			if _, err := rand.Read(key); err != nil {
-				return nil, err
-			}
-			encoded = base64.StdEncoding.EncodeToString(key)
-			if err := keyring.Set(keyringService, keyringConfigKey, encoded); err != nil {
-				return nil, err
-			}
-			return key, nil
+	if err == nil {
+		key, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+		if len(key) != 32 {
+			return nil, fmt.Errorf("invalid config master key length")
+		}
+		return key, nil
 	}
 
+	// First fallback: read key from local file (headless/container-safe).
+	if key, fileErr := loadMasterKeyFromFallbackFile(); fileErr == nil {
+		return key, nil
+	}
+
+	// Key not found or keyring unavailable: generate a new key.
+	key := make([]byte, 32)
+	if _, readErr := rand.Read(key); readErr != nil {
+		return nil, readErr
+	}
+	encoded = base64.StdEncoding.EncodeToString(key)
+
+	// Best-effort write to system keyring; if it fails, persist to fallback file.
+	if setErr := keyring.Set(keyringService, keyringConfigKey, encoded); setErr != nil {
+		return saveMasterKeyToFallbackFile(key)
+	}
+
+	return key, nil
+}
+
+func fallbackMasterKeyPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".picoclaw", ".config-master-key")
+}
+
+func loadMasterKeyFromFallbackFile() ([]byte, error) {
+	path := fallbackMasterKeyPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	encoded := string(data)
 	key, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, err
 	}
 	if len(key) != 32 {
-		return nil, fmt.Errorf("invalid config master key length")
+		return nil, fmt.Errorf("invalid fallback config master key length")
+	}
+	return key, nil
+}
+
+func saveMasterKeyToFallbackFile(key []byte) ([]byte, error) {
+	path := fallbackMasterKeyPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, err
+	}
+	encoded := base64.StdEncoding.EncodeToString(key)
+	if err := os.WriteFile(path, []byte(encoded), 0600); err != nil {
+		return nil, err
 	}
 	return key, nil
 }

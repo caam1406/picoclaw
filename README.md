@@ -115,6 +115,36 @@ make build-all
 make install
 ```
 
+### Docker Compose (gateway + dashboard + postgres)
+
+Use este fluxo para subir em servidor com um unico arquivo `docker-compose.yml` (sem Dockerfile).
+
+```bash
+# 1) Clone
+git clone https://github.com/caam1406/picoclaw.git
+cd picoclaw
+
+# 2) Configure variaveis do compose
+cp .env.example .env
+# edite .env com DASHBOARD_TOKEN, OPENROUTER_API_KEY e POSTGRES_PASSWORD
+
+# 3) Start
+docker compose up -d
+
+# 4) Logs
+docker compose logs -f picoclaw-gateway
+
+# 5) Stop
+docker compose down
+```
+
+Notas:
+- O compose inclui `postgres` com healthcheck e volume persistente.
+- O servico `picoclaw-gateway` clona/atualiza o repositorio em `REPO_URL` e compila no startup.
+- O volume `picoclaw_data` persiste config/workspace do PicoClaw.
+- No primeiro boot, a configuracao inicial e criada com `storage.type=postgres` e dashboard em `0.0.0.0:18791`.
+- O arquivo `.env.example` documenta todas as variaveis esperadas pelo compose.
+
 ### 🚀 Quick Start
 
 > [!TIP]
@@ -526,3 +556,4 @@ This happens when another instance of the bot is running. Make sure only one `pi
 | **Zhipu** | 200K tokens/month | Best for Chinese users |
 | **Brave Search** | 2000 queries/month | Web search functionality |
 | **Groq** | Free tier available | Fast inference (Llama, Mixtral) |
+
