@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -77,7 +78,11 @@ func (m *Manager) Run(ctx context.Context) error {
 	}
 }
 
-func (m *Manager) Stop() {}
+func (m *Manager) Stop() {
+	for _, loop := range m.agents {
+		loop.Stop()
+	}
+}
 
 func (m *Manager) DefaultLoop() *AgentLoop {
 	return m.agents[m.defaultAgent]
@@ -85,6 +90,24 @@ func (m *Manager) DefaultLoop() *AgentLoop {
 
 func (m *Manager) ProcessDirectWithChannel(ctx context.Context, content, sessionKey, channel, chatID string) (string, error) {
 	return m.DefaultLoop().ProcessDirectWithChannel(ctx, content, sessionKey, channel, chatID)
+}
+
+func (m *Manager) MCPStatusSnapshot() map[string][]map[string]interface{} {
+	out := map[string][]map[string]interface{}{}
+	ids := make([]string, 0, len(m.agents))
+	for agentID := range m.agents {
+		ids = append(ids, agentID)
+	}
+	sort.Strings(ids)
+	for _, agentID := range ids {
+		loop := m.agents[agentID]
+		if loop == nil {
+			out[agentID] = []map[string]interface{}{}
+			continue
+		}
+		out[agentID] = loop.MCPStatusSnapshot()
+	}
+	return out
 }
 
 func (m *Manager) resolveLoop(msg bus.InboundMessage) *AgentLoop {

@@ -101,6 +101,24 @@ func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.channelManager.GetStatus())
 }
 
+func (s *Server) handleMCPStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.mcpStatus == nil {
+		writeJSON(w, map[string]interface{}{
+			"agents": map[string][]map[string]interface{}{},
+		})
+		return
+	}
+
+	writeJSON(w, map[string]interface{}{
+		"agents": s.mcpStatus.MCPStatusSnapshot(),
+	})
+}
+
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)

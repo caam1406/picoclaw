@@ -585,6 +585,7 @@ func gatewayCmd() {
 			contactsStore,
 			msgBus,
 		)
+		dashboardServer.SetMCPStatusProvider(agentManager)
 
 		if err := dashboardServer.Start(ctx); err != nil {
 			fmt.Printf("Error starting dashboard: %v\n", err)

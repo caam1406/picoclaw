@@ -21,6 +21,10 @@ import (
 // StorageFactory is a function that creates a storage instance for testing connections
 type StorageFactory func(storageType, databaseURL string) (storage.Storage, error)
 
+type MCPStatusProvider interface {
+	MCPStatusSnapshot() map[string][]map[string]interface{}
+}
+
 type Server struct {
 	config         config.DashboardConfig
 	cfg            *config.Config // Full config for storage settings
@@ -33,6 +37,7 @@ type Server struct {
 	startTime      time.Time
 	storageFactory StorageFactory
 	dashboardOnly  bool // true when running without LLM configured
+	mcpStatus      MCPStatusProvider
 }
 
 func NewServer(
@@ -67,6 +72,10 @@ func (s *Server) SetDashboardOnly(v bool) {
 	s.dashboardOnly = v
 }
 
+func (s *Server) SetMCPStatusProvider(p MCPStatusProvider) {
+	s.mcpStatus = p
+}
+
 func (s *Server) Start(ctx context.Context) error {
 	s.startTime = time.Now()
 
@@ -87,6 +96,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/v1/defaults", s.authMiddleware(s.handleDefaults))
 	mux.HandleFunc("/api/v1/defaults/", s.authMiddleware(s.handleDefaultDetail))
 	mux.HandleFunc("/api/v1/send", s.authMiddleware(s.handleSend))
+	mux.HandleFunc("/api/v1/mcp/status", s.authMiddleware(s.handleMCPStatus))
 
 	// Storage configuration endpoints
 	mux.HandleFunc("/api/v1/config", s.authMiddleware(s.handleConfig))

@@ -20,6 +20,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/contacts"
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/sipeed/picoclaw/pkg/mcp"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/session"
 	"github.com/sipeed/picoclaw/pkg/tools"
@@ -42,6 +43,8 @@ type AgentLoop struct {
 	running        bool
 	summarizing    sync.Map // Tracks which sessions are currently being summarized
 	mcpServers     []config.MCPServerConfig
+	mcpRuntime     *mcp.Runtime
+	mcpToolsCount  int
 }
 
 // processOptions configures how a message is processed
@@ -100,6 +103,26 @@ func NewAgentLoopForAgent(cfg *config.Config, msgBus *bus.MessageBus, provider p
 	editFileTool := tools.NewEditFileTool(workspace)
 	toolsRegistry.Register(editFileTool)
 
+	mcpRuntime := mcp.NewRuntime(resolved.AgentID, resolved.MCPServers)
+	mcpRuntime.Start(context.Background())
+	mcpToolsCount := 0
+	for _, remote := range mcpRuntime.Tools() {
+		client, ok := mcpRuntime.Client(remote.ServerName)
+		if !ok || client == nil {
+			continue
+		}
+		tool := tools.NewMCPTool(remote.ServerName, remote, client)
+		if _, exists := toolsRegistry.Get(tool.Name()); exists {
+			logger.WarnCF("mcp", "Skipping duplicated MCP tool name", map[string]interface{}{
+				"agent_id": resolved.AgentID,
+				"tool":     tool.Name(),
+			})
+			continue
+		}
+		toolsRegistry.Register(tool)
+		mcpToolsCount++
+	}
+
 	sessionPath := filepath.Join(workspace, "sessions")
 	if resolved.AgentID != cfg.GetDefaultAgentID() {
 		sessionPath = filepath.Join(workspace, "sessions", resolved.AgentID)
@@ -124,6 +147,8 @@ func NewAgentLoopForAgent(cfg *config.Config, msgBus *bus.MessageBus, provider p
 		running:        false,
 		summarizing:    sync.Map{},
 		mcpServers:     resolved.MCPServers,
+		mcpRuntime:     mcpRuntime,
+		mcpToolsCount:  mcpToolsCount,
 	}
 }
 
@@ -167,6 +192,9 @@ func (al *AgentLoop) Run(ctx context.Context) error {
 
 func (al *AgentLoop) Stop() {
 	al.running = false
+	if al.mcpRuntime != nil {
+		al.mcpRuntime.Close()
+	}
 }
 
 func (al *AgentLoop) RegisterTool(tool tools.Tool) {
@@ -184,6 +212,25 @@ func (al *AgentLoop) SetContactsStore(store *contacts.Store, contactsOnly bool) 
 // GetSessionManager returns the session manager for dashboard access.
 func (al *AgentLoop) GetSessionManager() *session.SessionManager {
 	return al.sessions
+}
+
+func (al *AgentLoop) MCPStatusSnapshot() []map[string]interface{} {
+	if al.mcpRuntime == nil {
+		return []map[string]interface{}{}
+	}
+	statuses := al.mcpRuntime.StatusSnapshot()
+	out := make([]map[string]interface{}, 0, len(statuses))
+	for _, st := range statuses {
+		out = append(out, map[string]interface{}{
+			"server_name": st.ServerName,
+			"enabled":     st.Enabled,
+			"command":     st.Command,
+			"connected":   st.Connected,
+			"tool_count":  st.ToolCount,
+			"error":       st.Error,
+		})
+	}
+	return out
 }
 
 func (al *AgentLoop) ProcessDirect(ctx context.Context, content, sessionKey string) (string, error) {
@@ -668,7 +715,8 @@ func (al *AgentLoop) GetStartupInfo() map[string]interface{} {
 	info := make(map[string]interface{})
 	info["agent_id"] = al.AgentID()
 	info["mcp_servers"] = map[string]interface{}{
-		"count": len(al.mcpServers),
+		"count":       len(al.mcpServers),
+		"tools_count": al.mcpToolsCount,
 	}
 
 	// Tools info

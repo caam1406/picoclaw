@@ -11,6 +11,7 @@ let contactsByChannelID = new Map();
 let currentContactAllowedMCPs = [];
 let qrState = null;
 let waSelfJid = ''; // logged-in WhatsApp number (JID) when channel is connected, for "add my number"
+let mcpStatusPoll = null;
 const MAX_LIVE_MESSAGES = 200;
 
 // ─── Init ───────────────────────────────────────────────────────────
@@ -43,6 +44,7 @@ function doLogout() {
   token = '';
   localStorage.removeItem('picoclaw_token');
   if (ws) ws.close();
+  stopMCPStatusPolling();
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
 }
@@ -329,7 +331,12 @@ function showView(name) {
   if (view) view.classList.add('active');
 
   if (name === 'overview') loadOverview();
-  if (name === 'settings') loadSettings();
+  if (name === 'settings') {
+    loadSettings();
+    startMCPStatusPolling();
+  } else {
+    stopMCPStatusPolling();
+  }
   if (name === 'defaults') loadDefaults();
 }
 
@@ -910,6 +917,60 @@ function deleteDefault() {
 function loadSettings() {
   loadStorageConfig();
   loadAppConfig();
+  loadMCPRuntimeStatus();
+}
+
+function startMCPStatusPolling() {
+  stopMCPStatusPolling();
+  mcpStatusPoll = setInterval(() => {
+    loadMCPRuntimeStatus();
+  }, 5000);
+}
+
+function stopMCPStatusPolling() {
+  if (mcpStatusPoll) {
+    clearInterval(mcpStatusPoll);
+    mcpStatusPoll = null;
+  }
+}
+
+function loadMCPRuntimeStatus() {
+  const el = document.getElementById('settings-mcp-runtime-status');
+  if (!el) return;
+  apiFetch('/api/v1/mcp/status').then(data => {
+    const agents = (data && data.agents) || {};
+    const agentIDs = Object.keys(agents);
+    if (agentIDs.length === 0) {
+      el.innerHTML = '<div class="mcp-empty">Sem runtime MCP disponivel no modo atual.</div>';
+      return;
+    }
+
+    const html = [];
+    agentIDs.sort().forEach(agentID => {
+      const rows = Array.isArray(agents[agentID]) ? agents[agentID] : [];
+      html.push(`<div class="mcp-item"><div class="mcp-header"><strong>Agente: ${escapeHtml(agentID)}</strong></div>`);
+      if (rows.length === 0) {
+        html.push('<div class="mcp-empty">Nenhum MCP configurado.</div></div>');
+        return;
+      }
+      rows.forEach(row => {
+        const enabled = !!row.enabled;
+        const connected = !!row.connected;
+        const status = !enabled ? 'desabilitado' : (connected ? 'conectado' : 'erro');
+        const badgeColor = !enabled ? 'var(--text-muted)' : (connected ? 'var(--success)' : 'var(--danger)');
+        const errorLine = row.error ? `<div style="color:var(--danger);font-size:12px;margin-top:2px">erro: ${escapeHtml(String(row.error))}</div>` : '';
+        html.push(`<div class="sidebar-item" style="margin:6px 0">
+          <span style="font-family:var(--mono)">${escapeHtml(String(row.server_name || '-'))}</span>
+          <span class="contact-tag" style="margin-left:auto;background:${badgeColor}22;color:${badgeColor}">${status}</span>
+          <span class="contact-tag">${toInt(row.tool_count, 0)} tools</span>
+        </div>${errorLine}`);
+      });
+      html.push('</div>');
+    });
+    el.innerHTML = html.join('');
+  }).catch(err => {
+    el.innerHTML = `<div class="mcp-empty" style="color:var(--danger)">Erro ao carregar status MCP: ${escapeHtml(err.message || 'erro')}</div>`;
+  });
 }
 
 function loadAppConfig() {
