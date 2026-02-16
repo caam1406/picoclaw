@@ -68,11 +68,11 @@ func (m *Manager) Run(ctx context.Context) error {
 			}
 
 			if response != "" {
-				m.bus.PublishOutbound(bus.OutboundMessage{
+				loop.PublishOutboundWithDelay(ctx, bus.OutboundMessage{
 					Channel: msg.Channel,
 					ChatID:  msg.ChatID,
 					Content: response,
-				})
+				}, msg.SessionKey)
 			}
 		}
 	}

@@ -432,6 +432,12 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 	return finalContent, nil
 }
 
+// PublishOutboundWithDelay sends an outbound message, applying any contact-specific
+// response delay before publishing. Used by the agent Manager to honour delay config.
+func (al *AgentLoop) PublishOutboundWithDelay(ctx context.Context, msg bus.OutboundMessage, sessionKey string) {
+	al.publishOutboundWithContactDelay(ctx, msg, sessionKey)
+}
+
 func (al *AgentLoop) publishOutboundWithContactDelay(ctx context.Context, msg bus.OutboundMessage, sessionKey string) {
 	if al.contactsStore != nil && sessionKey != "" {
 		ci := al.contactsStore.GetContactForSession(sessionKey)
@@ -672,21 +678,10 @@ func extractMCPServerName(toolName string) string {
 	if name == "" {
 		return ""
 	}
+	// MCPTool names follow the format "mcp.<server>.<tool>"
 	if strings.HasPrefix(name, "mcp.") {
 		parts := strings.Split(name, ".")
 		if len(parts) >= 3 {
-			return parts[1]
-		}
-	}
-	if strings.HasPrefix(name, "mcp_") {
-		parts := strings.Split(name, "_")
-		if len(parts) >= 3 {
-			return parts[1]
-		}
-	}
-	if strings.Contains(name, "__") {
-		parts := strings.Split(name, "__")
-		if len(parts) >= 2 && parts[0] == "mcp" {
 			return parts[1]
 		}
 	}
@@ -755,7 +750,7 @@ func formatMessagesForLog(messages []providers.Message) string {
 	result += "[\n"
 	for i, msg := range messages {
 		result += fmt.Sprintf("  [%d] Role: %s\n", i, msg.Role)
-		if msg.ToolCalls != nil && len(msg.ToolCalls) > 0 {
+		if len(msg.ToolCalls) > 0 {
 			result += "  ToolCalls:\n"
 			for _, tc := range msg.ToolCalls {
 				result += fmt.Sprintf("    - ID: %s, Type: %s, Name: %s\n", tc.ID, tc.Type, tc.Name)

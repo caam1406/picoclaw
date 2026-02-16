@@ -57,7 +57,8 @@ func (c *Config) ResolveAgentConfig(agentID string) ResolvedAgentConfig {
 	}
 
 	settings := c.Agents.Defaults
-	var mcpServers []MCPServerConfig
+	// Start with default MCP servers; profiles override if they define their own.
+	mcpServers := append([]MCPServerConfig{}, c.Agents.Defaults.MCPServers...)
 
 	if profile, ok := c.Agents.Profiles[agentID]; ok {
 		if profile.Workspace != "" {
@@ -75,7 +76,9 @@ func (c *Config) ResolveAgentConfig(agentID string) ResolvedAgentConfig {
 		if profile.MaxToolIterations > 0 {
 			settings.MaxToolIterations = profile.MaxToolIterations
 		}
-		mcpServers = append([]MCPServerConfig{}, profile.MCPServers...)
+		if len(profile.MCPServers) > 0 {
+			mcpServers = append([]MCPServerConfig{}, profile.MCPServers...)
+		}
 	}
 
 	return ResolvedAgentConfig{

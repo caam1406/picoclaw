@@ -142,6 +142,11 @@ func (c *Client) State() (bool, string) {
 	}
 }
 
+// Closed returns a channel that is closed when the client terminates.
+func (c *Client) Closed() <-chan struct{} {
+	return c.closed
+}
+
 func (c *Client) ListTools(ctx context.Context) ([]RemoteTool, error) {
 	tools := make([]RemoteTool, 0)
 	cursor := ""

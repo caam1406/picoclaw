@@ -492,6 +492,29 @@ func gatewayCmd() {
 		skillsInfo["total"])
 	fmt.Printf("  • Agents: %d configured (default: %s)\n", len(cfg.ListAgentIDs()), cfg.GetDefaultAgentID())
 
+	// Print MCP status per agent
+	mcpSnapshot := agentManager.MCPStatusSnapshot()
+	for agentID, servers := range mcpSnapshot {
+		if len(servers) == 0 {
+			continue
+		}
+		for _, s := range servers {
+			enabled, _ := s["enabled"].(bool)
+			connected, _ := s["connected"].(bool)
+			toolCount, _ := s["tool_count"].(int)
+			srvName, _ := s["server_name"].(string)
+			errMsg, _ := s["error"].(string)
+
+			if !enabled {
+				fmt.Printf("  • MCP [%s] %s: disabled\n", agentID, srvName)
+			} else if connected {
+				fmt.Printf("  • MCP [%s] %s: ✓ connected (%d tools)\n", agentID, srvName, toolCount)
+			} else {
+				fmt.Printf("  • MCP [%s] %s: ✗ failed (%s)\n", agentID, srvName, errMsg)
+			}
+		}
+	}
+
 	// Log to file as well
 	logger.InfoCF("agent", "Agent initialized",
 		map[string]interface{}{
