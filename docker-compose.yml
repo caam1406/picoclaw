@@ -44,8 +44,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-picoclaw}
       POSTGRES_USER: ${POSTGRES_USER:-picoclaw}
       POSTGRES_PASSWORD_FILE: /run/picoclaw-secrets/postgres_password
+      PGDATA: /var/lib/postgresql/18/docker
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - picoclaw_secrets:/run/picoclaw-secrets:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-picoclaw} -d ${POSTGRES_DB:-picoclaw}"]
