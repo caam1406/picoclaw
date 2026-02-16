@@ -48,6 +48,8 @@ services:
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       OAUTHLIB_INSECURE_TRANSPORT: ${OAUTHLIB_INSECURE_TRANSPORT:-1}
+      GOG_ACCOUNT: ${GOG_ACCOUNT:-}
+      PICOCLAW_TOOLS_GOGCLI_ENABLED: ${PICOCLAW_TOOLS_GOGCLI_ENABLED:-false}
       PICOCLAW_STORAGE_TYPE: ${PICOCLAW_STORAGE_TYPE:-file}
       PICOCLAW_STORAGE_FILE_PATH: ${PICOCLAW_STORAGE_FILE_PATH:-~/.picoclaw/workspace/sessions}
       PICOCLAW_DASHBOARD_TOKEN: ${PICOCLAW_DASHBOARD_TOKEN:-}
@@ -108,15 +110,31 @@ services:
           echo "[picoclaw-gateway] WARNING: uvx installation failed; MCPs that use uvx may fail."
         fi
 
-        if ! command -v gogcli >/dev/null 2>&1; then
-          echo "[picoclaw-gateway] installing gogcli runtime..."
-          "$${GO_BIN}" install github.com/steipete/gogcli@latest
-          export PATH="$${HOME}/go/bin:$${HOME}/.local/bin:$${PATH}"
-        fi
-        if command -v gogcli >/dev/null 2>&1; then
-          echo "[picoclaw-gateway] gogcli detected: $$(command -v gogcli)"
+        if [ "$${PICOCLAW_TOOLS_GOGCLI_ENABLED:-false}" = "true" ] || [ "$${PICOCLAW_TOOLS_GOGCLI_ENABLED:-0}" = "1" ]; then
+          if ! command -v gog >/dev/null 2>&1 && ! command -v gogcli >/dev/null 2>&1; then
+            echo "[picoclaw-gateway] installing gog runtime..."
+            "$${GO_BIN}" install github.com/steipete/gogcli/cmd/gog@latest
+            export PATH="$${HOME}/go/bin:$${HOME}/.local/bin:$${PATH}"
+          fi
+          if command -v gog >/dev/null 2>&1; then
+            echo "[picoclaw-gateway] gog detected: $$(command -v gog)"
+          elif command -v gogcli >/dev/null 2>&1; then
+            echo "[picoclaw-gateway] gogcli detected: $$(command -v gogcli)"
+          else
+            echo "[picoclaw-gateway] WARNING: gog installation failed; gog tool may fail."
+          fi
+
+          GOG_BIN="$$(command -v gog || command -v gogcli || true)"
+          if [ -n "$${GOG_BIN}" ] && [ -n "$${GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "$${GOOGLE_OAUTH_CLIENT_SECRET:-}" ]; then
+            echo "[picoclaw-gateway] configuring gog OAuth client credentials..."
+            mkdir -p /root/.config/gog
+            cat >/root/.config/gog/oauth_client.json <<EOF
+{"installed":{"client_id":"$${GOOGLE_OAUTH_CLIENT_ID}","project_id":"picoclaw-gog","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"$${GOOGLE_OAUTH_CLIENT_SECRET}","redirect_uris":["http://127.0.0.1","http://localhost"]}}
+EOF
+            "$${GOG_BIN}" auth credentials /root/.config/gog/oauth_client.json || true
+          fi
         else
-          echo "[picoclaw-gateway] WARNING: gogcli installation failed; gogcli tool may fail."
+          echo "[picoclaw-gateway] gogcli tool disabled (PICOCLAW_TOOLS_GOGCLI_ENABLED=false)."
         fi
 
         echo "[picoclaw-gateway] downloading go modules..."
