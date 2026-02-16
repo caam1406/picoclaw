@@ -16,12 +16,20 @@ import (
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
+type wireMode int
+
+const (
+	wireModeLSP wireMode = iota
+	wireModeJSONLine
+)
+
 type Client struct {
 	serverName string
 	cmd        *exec.Cmd
 	stdin      io.WriteCloser
 	stdout     *bufio.Reader
 	stderr     io.ReadCloser
+	wireMode   wireMode
 
 	writeMu sync.Mutex
 	pendMu  sync.Mutex
@@ -62,6 +70,26 @@ type rpcResponse struct {
 }
 
 func StartClient(ctx context.Context, serverName, command string, args []string, env map[string]string) (*Client, error) {
+	// First try MCP stdio framing with Content-Length (spec/LSP style).
+	client, err := startClientWithWireMode(ctx, serverName, command, args, env, wireModeLSP)
+	if err == nil {
+		return client, nil
+	}
+
+	// Fallback for MCP servers that speak newline-delimited JSON over stdio.
+	logger.WarnCF("mcp", "MCP stdio fallback: retrying with JSON-line transport", map[string]interface{}{
+		"server": serverName,
+		"error":  err.Error(),
+	})
+	clientFallback, fallbackErr := startClientWithWireMode(ctx, serverName, command, args, env, wireModeJSONLine)
+	if fallbackErr == nil {
+		return clientFallback, nil
+	}
+
+	return nil, fmt.Errorf("%w (fallback json-line failed: %v)", err, fallbackErr)
+}
+
+func startClientWithWireMode(ctx context.Context, serverName, command string, args []string, env map[string]string, mode wireMode) (*Client, error) {
 	if strings.TrimSpace(serverName) == "" {
 		return nil, fmt.Errorf("serverName is required")
 	}
@@ -104,6 +132,7 @@ func StartClient(ctx context.Context, serverName, command string, args []string,
 		stdin:      stdin,
 		stdout:     bufio.NewReader(stdoutPipe),
 		stderr:     stderrPipe,
+		wireMode:   mode,
 		pending:    make(map[int64]chan rpcResponse),
 		closed:     make(chan struct{}),
 	}
@@ -321,34 +350,60 @@ func (c *Client) writeMessage(msg interface{}) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	if _, err := fmt.Fprintf(c.stdin, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
+	if c.wireMode == wireModeLSP {
+		if _, err := fmt.Fprintf(c.stdin, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
+			return err
+		}
+		if _, err := c.stdin.Write(body); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if _, err := c.stdin.Write(body); err != nil {
 		return err
 	}
-	if _, err := c.stdin.Write(body); err != nil {
+	if _, err := c.stdin.Write([]byte("\n")); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (c *Client) readLoop() {
+	var decoder *json.Decoder
+	if c.wireMode == wireModeJSONLine {
+		decoder = json.NewDecoder(c.stdout)
+	}
+
 	for {
-		body, err := readFrame(c.stdout)
-		if err != nil {
-			if err == io.EOF {
-				c.closeWithError(fmt.Errorf("mcp server %q closed stdout", c.serverName))
+		var msg rpcMessage
+		if c.wireMode == wireModeLSP {
+			body, err := readFrame(c.stdout)
+			if err != nil {
+				if err == io.EOF {
+					c.closeWithError(fmt.Errorf("mcp server %q closed stdout", c.serverName))
+					return
+				}
+				c.closeWithError(fmt.Errorf("read frame from %q: %w", c.serverName, err))
 				return
 			}
-			c.closeWithError(fmt.Errorf("read frame from %q: %w", c.serverName, err))
-			return
-		}
 
-		var msg rpcMessage
-		if err := json.Unmarshal(body, &msg); err != nil {
-			logger.WarnCF("mcp", "Invalid JSON from MCP server", map[string]interface{}{
-				"server": c.serverName,
-				"error":  err.Error(),
-			})
-			continue
+			if err := json.Unmarshal(body, &msg); err != nil {
+				logger.WarnCF("mcp", "Invalid JSON from MCP server", map[string]interface{}{
+					"server": c.serverName,
+					"error":  err.Error(),
+				})
+				continue
+			}
+		} else {
+			if err := decoder.Decode(&msg); err != nil {
+				if err == io.EOF {
+					c.closeWithError(fmt.Errorf("mcp server %q closed stdout", c.serverName))
+					return
+				}
+				c.closeWithError(fmt.Errorf("decode json-line message from %q: %w", c.serverName, err))
+				return
+			}
 		}
 
 		id, hasID := parseID(msg.ID)
