@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
@@ -70,8 +71,12 @@ type rpcResponse struct {
 }
 
 func StartClient(ctx context.Context, serverName, command string, args []string, env map[string]string) (*Client, error) {
+	const attemptTimeout = 8 * time.Second
+
 	// First try MCP stdio framing with Content-Length (spec/LSP style).
-	client, err := startClientWithWireMode(ctx, serverName, command, args, env, wireModeLSP)
+	lspCtx, lspCancel := context.WithTimeout(ctx, attemptTimeout)
+	client, err := startClientWithWireMode(lspCtx, serverName, command, args, env, wireModeLSP)
+	lspCancel()
 	if err == nil {
 		return client, nil
 	}
@@ -81,7 +86,9 @@ func StartClient(ctx context.Context, serverName, command string, args []string,
 		"server": serverName,
 		"error":  err.Error(),
 	})
-	clientFallback, fallbackErr := startClientWithWireMode(ctx, serverName, command, args, env, wireModeJSONLine)
+	fallbackCtx, fallbackCancel := context.WithTimeout(ctx, attemptTimeout)
+	clientFallback, fallbackErr := startClientWithWireMode(fallbackCtx, serverName, command, args, env, wireModeJSONLine)
+	fallbackCancel()
 	if fallbackErr == nil {
 		return clientFallback, nil
 	}
