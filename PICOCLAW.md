@@ -207,6 +207,8 @@ Quando uma mensagem chega, o sistema resolve a instrucao efetiva nesta ordem de 
 | `status` | Mostra estado do sistema |
 | `cron list/add/remove/enable/disable` | Gerencia tarefas agendadas |
 | `skills list/install/remove/show` | Gerencia skills |
+| `dashboard token` | Exibe token atual do dashboard (gera e salva se faltar) |
+| `dashboard token reset` | Rotaciona token do dashboard e salva |
 | `version` | Mostra versao |
 
 ### Sequencia de Inicializacao (gateway)
@@ -291,6 +293,7 @@ type MessageBus struct {
 
 ```go
 type AgentLoop struct {
+    agentID        string           // ex: "default", "sales", "support"
     bus            *bus.MessageBus
     provider       providers.LLMProvider
     workspace      string
@@ -302,8 +305,19 @@ type AgentLoop struct {
     tools          *tools.ToolRegistry
     contactsStore  *contacts.Store
     contactsOnly   bool             // gate: so contatos registrados
+    mcpServers     []config.MCPServerConfig
 }
 ```
+
+### Agent Manager (roteamento por contato)
+
+`pkg/agent/manager.go` instancia um `AgentLoop` por `agent_id` (baseado em `agents.default_profile` e `agents.profiles`) e roteia cada mensagem para o loop correto:
+
+1. Resolve contato via `contactsStore.GetContactForSession(sessionKey)`
+2. Se contato tiver `agent_id`, usa esse agente
+3. Se `agent_id` invalido/inexistente, faz fallback para agente default e gera warning
+
+Com isso, cada agente pode usar workspace/modelo/sessoes/MCPs independentes.
 
 ### processMessage() - Fluxo Principal
 
@@ -323,11 +337,14 @@ type AgentLoop struct {
 3. summary = sessions.GetSummary(sessionKey)
 4. messages = contextBuilder.BuildMessages(history, summary, userMessage, media, channel, chatID)
 5. sessions.AddMessage(sessionKey, "user", userMessage)
-6. runLLMIteration(ctx, messages, opts) - loop LLM + tools
-7. Se resposta vazia -> usar defaultResponse
-8. sessions.AddMessage(sessionKey, "assistant", finalContent)
-9. maybeSummarize(sessionKey) - se history > 20 msgs ou > 75% context window
-10. Se sendResponse=true -> publishOutbound
+6. Resolve politica MCP por contato (`allowed_mcps`) e filtra tools MCP disponiveis
+7. runLLMIteration(ctx, messages, opts, mcpPolicy) - loop LLM + tools
+   - se tool MCP nao permitida, retorna erro de policy para o modelo
+8. Se resposta vazia -> usar defaultResponse
+9. sessions.AddMessage(sessionKey, "assistant", finalContent)
+10. maybeSummarize(sessionKey) - se history > 20 msgs ou > 75% context window
+11. Se contato tiver `response_delay_seconds > 0`, aguarda delay antes de enviar
+12. Se sendResponse=true -> publishOutbound
 ```
 
 ### runLLMIteration() - Loop LLM + Tools
@@ -578,12 +595,15 @@ type SkillsLoader struct {
 
 ```go
 type ContactInstruction struct {
-    ContactID    string    `json:"contact_id"`
-    Channel      string    `json:"channel"`
-    DisplayName  string    `json:"display_name"`
-    Instructions string    `json:"instructions"`
-    CreatedAt    time.Time `json:"created_at"`
-    UpdatedAt    time.Time `json:"updated_at"`
+    ContactID            string    `json:"contact_id"`
+    Channel              string    `json:"channel"`
+    DisplayName          string    `json:"display_name"`
+    AgentID              string    `json:"agent_id,omitempty"`
+    AllowedMCPs          []string  `json:"allowed_mcps,omitempty"`
+    Instructions         string    `json:"instructions"`
+    ResponseDelaySeconds int       `json:"response_delay_seconds,omitempty"`
+    CreatedAt            time.Time `json:"created_at"`
+    UpdatedAt            time.Time `json:"updated_at"`
 }
 ```
 
@@ -772,10 +792,10 @@ SPA vanilla JS com dark theme. Embeddado via `go:embed frontend/*`.
 
 **Views**:
 - `view-overview`: Stats (canais, sessoes, contatos, uptime) + sessoes recentes
-- `view-contact`: CRUD de contato com instrucoes personalizadas
+- `view-contact`: CRUD de contato com instrucoes personalizadas, `agent_id`, `allowed_mcps` e `response_delay_seconds`
 - `view-default`: CRUD de instrucoes padrao para nao-contatos
-- `view-live`: Mensagens em tempo real via WebSocket
-- `view-settings`: Configuracao de storage (file/postgres)
+- `view-live`: Mensagens em tempo real via WebSocket com identificacao do remetente (nome do contato; fallback numero/ID)
+- `view-settings`: Configuracoes gerais (agentes, MCPs por agente, storage, canais, providers, dashboard)
 
 **Modais**:
 - `modal-add-contact`: Novo contato (canal, ID, nome)
@@ -823,7 +843,10 @@ updated_at TIMESTAMP WITH TIME ZONE
 channel VARCHAR(50) NOT NULL
 contact_id VARCHAR(255) NOT NULL
 display_name VARCHAR(255)
+agent_id VARCHAR(64) NOT NULL DEFAULT ''
+allowed_mcps JSONB NOT NULL DEFAULT '[]'::jsonb
 instructions TEXT NOT NULL
+response_delay_seconds INTEGER NOT NULL DEFAULT 0
 created_at, updated_at TIMESTAMP WITH TIME ZONE
 PRIMARY KEY (channel, contact_id)
 ```
@@ -909,11 +932,23 @@ type Config struct {
 
 | Campo | Tipo | Default | Descricao |
 |-------|------|---------|-----------|
-| `enabled` | bool | `false` | Habilita dashboard web |
+| `enabled` | bool | `true` | Habilita dashboard web |
 | `host` | string | `127.0.0.1` | Host do servidor |
 | `port` | int | `18791` | Porta do servidor |
 | `token` | string | `""` | Token de autenticacao |
 | `contacts_only` | bool | `false` | So responde contatos registrados |
+
+### AgentsConfig (multi-agent)
+
+| Campo | Tipo | Default | Descricao |
+|-------|------|---------|-----------|
+| `default_profile` | string | `"default"` | Agente padrao para sessoes sem contato vinculado |
+| `profiles` | object | `{}` | Mapa de perfis por `agent_id` |
+
+Cada perfil em `profiles.<agent_id>` pode sobrescrever defaults e definir MCPs proprios:
+
+- `workspace`, `model`, `max_tokens`, `temperature`, `max_tool_iterations`
+- `mcp_servers[]`: `{name, enabled, command, args[], env{}}`
 
 ### StorageConfig
 
@@ -996,7 +1031,12 @@ Todos os canais tem: `enabled` (bool), `allow_from` ([]string)
 | PUT | `/api/v1/contacts/{channel}/{id}` | Cria/atualiza contato |
 | DELETE | `/api/v1/contacts/{channel}/{id}` | Remove contato |
 
-**Body PUT**: `{"display_name": "Nome", "instructions": "Instrucoes..."}`
+**Body PUT**: `{"display_name":"Nome","agent_id":"sales","allowed_mcps":["crm"],"instructions":"Instrucoes...","response_delay_seconds":2}`
+
+Validacoes relevantes:
+- `response_delay_seconds` entre `0` e `3600`
+- `agent_id` deve existir em `agents.profiles` (ou default)
+- `allowed_mcps` deve conter apenas MCPs configurados para o `agent_id` selecionado
 
 ### Default Instructions
 
@@ -1021,9 +1061,19 @@ Todos os canais tem: `enabled` (bool), `allow_from` ([]string)
 
 | Metodo | Path | Descricao |
 |--------|------|-----------|
+| GET | `/api/v1/config` | Config completa (segredos mascarados em `secrets`) |
+| PUT | `/api/v1/config` | Atualiza configuracao completa (inclui agentes e MCPs) |
 | GET | `/api/v1/config/storage` | Config atual (password mascarado) |
 | PUT | `/api/v1/config/storage/update` | Atualiza config (requer restart) |
 | POST | `/api/v1/config/storage/test` | Testa conexao com database |
+
+### WhatsApp Auxiliar
+
+| Metodo | Path | Descricao |
+|--------|------|-----------|
+| GET | `/api/v1/whatsapp/qr` | Ultimo estado do QR code |
+| POST | `/api/v1/whatsapp/connect` | Dispara fluxo de conexao/login |
+| GET | `/api/v1/whatsapp/contact-list` | Retorna agenda, grupos e chats recentes para cadastro de contato |
 
 ### WebSocket
 
