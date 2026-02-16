@@ -89,6 +89,22 @@ services:
           exit 1
         fi
         echo "[picoclaw-gateway] using go binary: $${GO_BIN}"
+
+        export PATH="$${HOME}/.local/bin:$${PATH}"
+        if ! command -v uvx >/dev/null 2>&1; then
+          echo "[picoclaw-gateway] installing uv/uvx runtime..."
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
+          rm -rf /var/lib/apt/lists/*
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$${HOME}/.local/bin:$${PATH}"
+        fi
+        if command -v uvx >/dev/null 2>&1; then
+          echo "[picoclaw-gateway] uvx detected: $$(command -v uvx)"
+        else
+          echo "[picoclaw-gateway] WARNING: uvx installation failed; MCPs that use uvx may fail."
+        fi
+
         echo "[picoclaw-gateway] downloading go modules..."
         "$${GO_BIN}" mod download
         echo "[picoclaw-gateway] building binary..."
