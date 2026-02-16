@@ -65,12 +65,15 @@ func convertToRepoContact(fileCI *contacts.ContactInstruction) *repository.Conta
 	}
 
 	return &repository.ContactInstruction{
-		ContactID:    fileCI.ContactID,
-		Channel:      fileCI.Channel,
-		DisplayName:  fileCI.DisplayName,
-		Instructions: fileCI.Instructions,
-		CreatedAt:    fileCI.CreatedAt,
-		UpdatedAt:    fileCI.UpdatedAt,
+		ContactID:            fileCI.ContactID,
+		Channel:              fileCI.Channel,
+		DisplayName:          fileCI.DisplayName,
+		AgentID:              fileCI.AgentID,
+		AllowedMCPs:          append([]string{}, fileCI.AllowedMCPs...),
+		Instructions:         fileCI.Instructions,
+		ResponseDelaySeconds: fileCI.ResponseDelaySeconds,
+		CreatedAt:            fileCI.CreatedAt,
+		UpdatedAt:            fileCI.UpdatedAt,
 	}
 }
 
@@ -80,11 +83,14 @@ func convertToFileContact(repoCI *repository.ContactInstruction) *contacts.Conta
 	}
 
 	return &contacts.ContactInstruction{
-		ContactID:    repoCI.ContactID,
-		Channel:      repoCI.Channel,
-		DisplayName:  repoCI.DisplayName,
-		Instructions: repoCI.Instructions,
-		CreatedAt:    repoCI.CreatedAt,
-		UpdatedAt:    repoCI.UpdatedAt,
+		ContactID:            repoCI.ContactID,
+		Channel:              repoCI.Channel,
+		DisplayName:          repoCI.DisplayName,
+		AgentID:              repoCI.AgentID,
+		AllowedMCPs:          append([]string{}, repoCI.AllowedMCPs...),
+		Instructions:         repoCI.Instructions,
+		ResponseDelaySeconds: repoCI.ResponseDelaySeconds,
+		CreatedAt:            repoCI.CreatedAt,
+		UpdatedAt:            repoCI.UpdatedAt,
 	}
 }

@@ -350,6 +350,50 @@ body {
   gap: 8px;
 }
 
+.inline-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mcp-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: var(--bg);
+}
+
+.mcp-item .mcp-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mcp-item .mcp-wide {
+  grid-column: 1 / -1;
+}
+
+.mcp-item .mcp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mcp-empty {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .btn {
   padding: 10px 20px;
   border-radius: var(--radius);

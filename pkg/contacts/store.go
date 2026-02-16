@@ -14,6 +14,8 @@ type ContactInstruction struct {
 	ContactID            string    `json:"contact_id"`
 	Channel              string    `json:"channel"`
 	DisplayName          string    `json:"display_name"`
+	AgentID              string    `json:"agent_id,omitempty"`
+	AllowedMCPs          []string  `json:"allowed_mcps,omitempty"`
 	Instructions         string    `json:"instructions"`
 	ResponseDelaySeconds int       `json:"response_delay_seconds,omitempty"`
 	CreatedAt            time.Time `json:"created_at"`
@@ -61,6 +63,8 @@ func (s *Store) Set(ci ContactInstruction) error {
 	existing, ok := s.instructions[key]
 	if ok {
 		existing.DisplayName = ci.DisplayName
+		existing.AgentID = ci.AgentID
+		existing.AllowedMCPs = append([]string{}, ci.AllowedMCPs...)
 		existing.Instructions = ci.Instructions
 		existing.ResponseDelaySeconds = ci.ResponseDelaySeconds
 		existing.UpdatedAt = time.Now()

@@ -8,6 +8,7 @@ let currentConfig = null;
 let currentSecrets = {};
 let liveMessages = [];
 let contactsByChannelID = new Map();
+let currentContactAllowedMCPs = [];
 let qrState = null;
 let waSelfJid = ''; // logged-in WhatsApp number (JID) when channel is connected, for "add my number"
 const MAX_LIVE_MESSAGES = 200;
@@ -310,9 +311,11 @@ function loadContacts() {
       const label = c.display_name || c.contact_id;
       const isGroup = (c.contact_id && c.contact_id.includes('@g.us'));
       const groupTag = isGroup ? '<span class="contact-tag group-tag">Grupo</span>' : '';
+      const agentTag = c.agent_id ? `<span class="contact-tag">${escapeHtml(c.agent_id)}</span>` : '';
       return `<div class="sidebar-item" onclick="editContact('${escapeAttr(c.channel)}','${escapeAttr(c.contact_id)}')">
         <span>${escapeHtml(label)}</span>
         ${groupTag}
+        ${agentTag}
         <span class="contact-tag">${c.channel}</span>
       </div>`;
     }).join('');
@@ -331,13 +334,126 @@ function showView(name) {
 }
 
 // ─── Contact CRUD ───────────────────────────────────────────────────
+function ensureAppConfigLoaded() {
+  if (currentConfig) return Promise.resolve(currentConfig);
+  return apiFetch('/api/v1/config').then(data => {
+    currentConfig = data.config || {};
+    currentSecrets = data.secrets || {};
+    return currentConfig;
+  });
+}
+
+function getDefaultAgentID(cfg) {
+  const agents = (cfg && cfg.agents) || {};
+  const id = String(agents.default_profile || 'default').trim();
+  return id || 'default';
+}
+
+function getAgentIDs(cfg) {
+  const agents = (cfg && cfg.agents) || {};
+  const profiles = agents.profiles || {};
+  const ids = Object.keys(profiles).filter(Boolean);
+  const def = getDefaultAgentID(cfg);
+  if (!ids.includes(def)) ids.unshift(def);
+  return ids;
+}
+
+function ensureAgentProfile(cfg, agentID) {
+  cfg.agents = cfg.agents || {};
+  cfg.agents.profiles = cfg.agents.profiles || {};
+  if (!cfg.agents.profiles[agentID]) cfg.agents.profiles[agentID] = {};
+  const profile = cfg.agents.profiles[agentID];
+  if (!Array.isArray(profile.mcp_servers)) profile.mcp_servers = [];
+  return profile;
+}
+
+function refreshContactAgentSelect(selectedAgentID) {
+  const select = document.getElementById('contact-agent-id');
+  if (!select) return;
+  const cfg = currentConfig || {};
+  const ids = getAgentIDs(cfg);
+  const selected = (selectedAgentID || getDefaultAgentID(cfg)).trim();
+  select.innerHTML = ids.map(id => `<option value="${escapeAttr(id)}">${escapeHtml(id)}</option>`).join('');
+  if (!ids.includes(selected)) {
+    select.insertAdjacentHTML('beforeend', `<option value="${escapeAttr(selected)}">${escapeHtml(selected)}</option>`);
+  }
+  select.value = selected;
+}
+
+function serializeEnv(envObj) {
+  if (!envObj || typeof envObj !== 'object') return '';
+  return Object.entries(envObj).map(([k, v]) => `${k}=${v}`).join('\n');
+}
+
+function parseEnv(text) {
+  const env = {};
+  String(text || '').split(/\r?\n/).forEach(line => {
+    const raw = line.trim();
+    if (!raw) return;
+    const idx = raw.indexOf('=');
+    if (idx <= 0) return;
+    const key = raw.slice(0, idx).trim();
+    const value = raw.slice(idx + 1).trim();
+    if (!key) return;
+    env[key] = value;
+  });
+  return env;
+}
+
+function getSelectedAgentProfileForContact() {
+  const select = document.getElementById('contact-agent-id');
+  if (!select || !currentConfig) return null;
+  const agentID = String(select.value || '').trim();
+  if (!agentID) return null;
+  return ensureAgentProfile(currentConfig, agentID);
+}
+
+function renderContactAgentMCPs() {
+  const list = document.getElementById('contact-mcp-list');
+  if (!list) return;
+  if (!currentConfig) {
+    list.innerHTML = '<div class="mcp-empty">Carregando configuracao...</div>';
+    return;
+  }
+  const profile = getSelectedAgentProfileForContact();
+  if (!profile) {
+    list.innerHTML = '<div class="mcp-empty">Selecione um agente.</div>';
+    return;
+  }
+  const mcps = (profile.mcp_servers || []).filter(m => m && m.name);
+  if (mcps.length === 0) {
+    list.innerHTML = '<div class="mcp-empty">Nenhum MCP cadastrado para este agente.</div>';
+    return;
+  }
+  const selected = new Set(currentContactAllowedMCPs || []);
+  list.innerHTML = mcps.map(mcp => {
+    const checked = selected.has(mcp.name) ? 'checked' : '';
+    return `<label class="sidebar-item" style="cursor:pointer">
+      <input type="checkbox" class="contact-mcp-checkbox" value="${escapeAttr(mcp.name)}" ${checked}>
+      <span>${escapeHtml(mcp.name)}</span>
+    </label>`;
+  }).join('');
+}
+
+function onContactAgentChange() {
+  renderContactAgentMCPs();
+}
+
+function getSelectedContactAllowedMCPs() {
+  return Array.from(document.querySelectorAll('.contact-mcp-checkbox:checked')).map(el => el.value).filter(Boolean);
+}
+
 function editContact(channel, id) {
   currentContact = { channel, id };
-
-  apiFetch('/api/v1/contacts/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id)).then(data => {
+  Promise.all([
+    apiFetch('/api/v1/contacts/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id)),
+    ensureAppConfigLoaded()
+  ]).then(([data]) => {
     document.getElementById('contact-channel').value = data.channel;
     document.getElementById('contact-id').value = data.contact_id;
     document.getElementById('contact-name').value = data.display_name || '';
+    refreshContactAgentSelect(data.agent_id || getDefaultAgentID(currentConfig || {}));
+    currentContactAllowedMCPs = Array.isArray(data.allowed_mcps) ? data.allowed_mcps : [];
     document.getElementById('contact-instructions').value = data.instructions || '';
     document.getElementById('contact-response-delay').value = toInt(data.response_delay_seconds, 0);
     const isGroup = (data.contact_id && data.contact_id.includes('@g.us'));
@@ -349,10 +465,118 @@ function editContact(channel, id) {
     // Disable channel/id fields when editing existing
     document.getElementById('contact-channel').disabled = true;
     document.getElementById('contact-id').disabled = true;
+    renderContactAgentMCPs();
 
     showView('contact');
   }).catch(() => {
     toast('Erro ao carregar contato', true);
+  });
+}
+
+function getSelectedSettingsAgentID() {
+  const el = document.getElementById('settings-agent-profile');
+  return el ? String(el.value || '').trim() : '';
+}
+
+function renderSettingsAgentProfileOptions(selected) {
+  const select = document.getElementById('settings-agent-profile');
+  if (!select) return;
+  const ids = getAgentIDs(currentConfig || {});
+  const desired = (selected || getDefaultAgentID(currentConfig || {})).trim();
+  select.innerHTML = ids.map(id => `<option value="${escapeAttr(id)}">${escapeHtml(id)}</option>`).join('');
+  if (!ids.includes(desired)) {
+    select.insertAdjacentHTML('beforeend', `<option value="${escapeAttr(desired)}">${escapeHtml(desired)}</option>`);
+  }
+  select.value = desired;
+}
+
+function renderSettingsAgentMCPs() {
+  const list = document.getElementById('settings-agent-mcp-list');
+  if (!list) return;
+  const agentID = getSelectedSettingsAgentID();
+  if (!agentID || !currentConfig) {
+    list.innerHTML = '<div class="mcp-empty">Selecione um agente.</div>';
+    return;
+  }
+  const profile = ensureAgentProfile(currentConfig, agentID);
+  const mcps = profile.mcp_servers || [];
+  if (mcps.length === 0) {
+    list.innerHTML = '<div class="mcp-empty">Nenhum MCP cadastrado.</div>';
+    return;
+  }
+  list.innerHTML = mcps.map((mcp, i) => {
+    const argsText = Array.isArray(mcp.args) ? mcp.args.join(', ') : '';
+    const envText = serializeEnv(mcp.env);
+    return `<div class="mcp-item">
+      <div class="mcp-header">
+        <strong>MCP #${i + 1}</strong>
+        <button type="button" class="btn btn-danger" onclick="removeSettingsAgentMCP(${i})">Remover</button>
+      </div>
+      <div class="mcp-grid">
+        <div><label>Nome</label><input type="text" value="${escapeAttr(mcp.name || '')}" oninput="updateSettingsAgentMCPField(${i}, 'name', this.value)"></div>
+        <div><label>Habilitado</label><select onchange="updateSettingsAgentMCPField(${i}, 'enabled', this.value === 'true')"><option value="true" ${mcp.enabled !== false ? 'selected' : ''}>Sim</option><option value="false" ${mcp.enabled === false ? 'selected' : ''}>Nao</option></select></div>
+        <div class="mcp-wide"><label>Comando</label><input type="text" value="${escapeAttr(mcp.command || '')}" oninput="updateSettingsAgentMCPField(${i}, 'command', this.value)"></div>
+        <div class="mcp-wide"><label>Args (separados por virgula)</label><input type="text" value="${escapeAttr(argsText)}" oninput="updateSettingsAgentMCPField(${i}, 'args_text', this.value)"></div>
+        <div class="mcp-wide"><label>Env (KEY=VALUE por linha)</label><textarea oninput="updateSettingsAgentMCPField(${i}, 'env_text', this.value)">${escapeHtml(envText)}</textarea></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateSettingsAgentMCPField(index, field, value) {
+  const profile = ensureAgentProfile(currentConfig || {}, getSelectedSettingsAgentID());
+  if (!profile || !Array.isArray(profile.mcp_servers) || !profile.mcp_servers[index]) return;
+  if (field === 'args_text') {
+    profile.mcp_servers[index].args = String(value || '').split(',').map(v => v.trim()).filter(Boolean);
+    return;
+  }
+  if (field === 'env_text') {
+    profile.mcp_servers[index].env = parseEnv(value);
+    return;
+  }
+  profile.mcp_servers[index][field] = value;
+}
+
+function addSettingsAgentProfile() {
+  const input = document.getElementById('settings-new-agent-id');
+  const id = input ? String(input.value || '').trim() : '';
+  if (!id) {
+    toast('Informe um agent_id', true);
+    return;
+  }
+  ensureAgentProfile(currentConfig || {}, id);
+  renderSettingsAgentProfileOptions(id);
+  renderSettingsAgentMCPs();
+  if (input) input.value = '';
+}
+
+function addSettingsAgentMCP() {
+  const profile = ensureAgentProfile(currentConfig || {}, getSelectedSettingsAgentID());
+  if (!profile) return;
+  profile.mcp_servers.push({ name: '', enabled: true, command: '', args: [], env: {} });
+  renderSettingsAgentMCPs();
+}
+
+function removeSettingsAgentMCP(index) {
+  const profile = ensureAgentProfile(currentConfig || {}, getSelectedSettingsAgentID());
+  if (!profile || !Array.isArray(profile.mcp_servers)) return;
+  profile.mcp_servers.splice(index, 1);
+  renderSettingsAgentMCPs();
+}
+
+function saveSettingsAgentMCPs() {
+  if (!currentConfig) {
+    toast('Configuracao nao carregada', true);
+    return;
+  }
+  apiFetch('/api/v1/config', {
+    method: 'PUT',
+    body: JSON.stringify({ config: currentConfig, secrets: {} })
+  }).then(() => {
+    toast('MCPs salvos');
+    loadAppConfig();
+  }).catch(err => {
+    toast('Erro ao salvar MCPs: ' + err.message, true);
   });
 }
 
@@ -498,7 +722,7 @@ function createContact() {
 
   apiFetch('/api/v1/contacts/' + encodeURIComponent(channel) + '/' + encodeURIComponent(id), {
     method: 'PUT',
-    body: JSON.stringify({ display_name: name, instructions: '', response_delay_seconds: 0 })
+    body: JSON.stringify({ display_name: name, agent_id: getDefaultAgentID(currentConfig || {}), allowed_mcps: [], instructions: '', response_delay_seconds: 0 })
   }).then(() => {
     closeModal();
     loadContacts();
@@ -510,6 +734,11 @@ function createContact() {
     document.getElementById('contact-id').value = id;
     document.getElementById('contact-id').disabled = true;
     document.getElementById('contact-name').value = name;
+    ensureAppConfigLoaded().then(() => {
+      refreshContactAgentSelect(getDefaultAgentID(currentConfig || {}));
+      currentContactAllowedMCPs = [];
+      renderContactAgentMCPs();
+    });
     document.getElementById('contact-instructions').value = '';
     document.getElementById('contact-response-delay').value = 0;
     const isGroup = id.includes('@g.us');
@@ -527,6 +756,8 @@ function saveContact() {
   if (!currentContact) return;
 
   const name = document.getElementById('contact-name').value.trim();
+  const agentID = String(document.getElementById('contact-agent-id').value || '').trim();
+  const allowedMCPs = getSelectedContactAllowedMCPs();
   const instructions = document.getElementById('contact-instructions').value.trim();
   let responseDelaySeconds = toInt(document.getElementById('contact-response-delay').value, 0);
   if (responseDelaySeconds < 0) responseDelaySeconds = 0;
@@ -537,6 +768,8 @@ function saveContact() {
     method: 'PUT',
     body: JSON.stringify({
       display_name: name,
+      agent_id: agentID,
+      allowed_mcps: allowedMCPs,
       instructions: instructions,
       response_delay_seconds: responseDelaySeconds
     })
@@ -684,6 +917,13 @@ function loadAppConfig() {
     currentConfig = data.config || {};
     currentSecrets = data.secrets || {};
     applyConfigToForm(currentConfig);
+    renderSettingsAgentProfileOptions();
+    renderSettingsAgentMCPs();
+    if (currentContact) {
+      const selected = String((document.getElementById('contact-agent-id') || {}).value || '').trim();
+      refreshContactAgentSelect(selected || getDefaultAgentID(currentConfig || {}));
+      renderContactAgentMCPs();
+    }
   }).catch(() => {
     toast('Erro ao carregar configuracao', true);
   });
@@ -1341,3 +1581,4 @@ document.addEventListener('keydown', (e) => {
     doLogin();
   }
 });
+

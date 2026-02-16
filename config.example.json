@@ -1,11 +1,32 @@
 {
   "agents": {
+    "default_profile": "default",
     "defaults": {
       "workspace": "~/.picoclaw/workspace",
       "model": "glm-4.5",
       "max_tokens": 8192,
       "temperature": 0.1,
       "max_tool_iterations": 20
+    },
+    "profiles": {
+      "sales": {
+        "workspace": "~/.picoclaw/workspace_sales",
+        "model": "glm-4.5",
+        "max_tokens": 8192,
+        "temperature": 0.1,
+        "max_tool_iterations": 20,
+        "mcp_servers": [
+          {
+            "name": "crm",
+            "enabled": true,
+            "command": "crm-mcp",
+            "args": ["--stdio"],
+            "env": {
+              "CRM_BASE_URL": "https://example.com"
+            }
+          }
+        ]
+      }
     }
   },
   "channels": {

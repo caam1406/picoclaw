@@ -27,6 +27,7 @@ import (
 )
 
 type AgentLoop struct {
+	agentID        string
 	bus            *bus.MessageBus
 	provider       providers.LLMProvider
 	workspace      string
@@ -40,6 +41,7 @@ type AgentLoop struct {
 	contactsOnly   bool            // When true, only registered contacts get responses
 	running        bool
 	summarizing    sync.Map // Tracks which sessions are currently being summarized
+	mcpServers     []config.MCPServerConfig
 }
 
 // processOptions configures how a message is processed
@@ -54,7 +56,13 @@ type processOptions struct {
 }
 
 func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider) *AgentLoop {
-	workspace := cfg.WorkspacePath()
+	defaultAgentID := cfg.GetDefaultAgentID()
+	return NewAgentLoopForAgent(cfg, msgBus, provider, defaultAgentID)
+}
+
+func NewAgentLoopForAgent(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider, agentID string) *AgentLoop {
+	resolved := cfg.ResolveAgentConfig(agentID)
+	workspace := configExpandHome(resolved.Settings.Workspace)
 	os.MkdirAll(workspace, 0755)
 
 	toolsRegistry := tools.NewToolRegistry()
@@ -88,25 +96,38 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	editFileTool := tools.NewEditFileTool(workspace)
 	toolsRegistry.Register(editFileTool)
 
-	sessionsManager := session.NewSessionManager(filepath.Join(workspace, "sessions"))
+	sessionPath := filepath.Join(workspace, "sessions")
+	if resolved.AgentID != cfg.GetDefaultAgentID() {
+		sessionPath = filepath.Join(workspace, "sessions", resolved.AgentID)
+	}
+	sessionsManager := session.NewSessionManager(sessionPath)
 
 	// Create context builder and set tools registry
 	contextBuilder := NewContextBuilder(workspace)
 	contextBuilder.SetToolsRegistry(toolsRegistry)
 
 	return &AgentLoop{
+		agentID:        resolved.AgentID,
 		bus:            msgBus,
 		provider:       provider,
 		workspace:      workspace,
-		model:          cfg.Agents.Defaults.Model,
-		contextWindow:  cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
-		maxIterations:  cfg.Agents.Defaults.MaxToolIterations,
+		model:          resolved.Settings.Model,
+		contextWindow:  resolved.Settings.MaxTokens, // Restore context window for summarization
+		maxIterations:  resolved.Settings.MaxToolIterations,
 		sessions:       sessionsManager,
 		contextBuilder: contextBuilder,
 		tools:          toolsRegistry,
 		running:        false,
 		summarizing:    sync.Map{},
+		mcpServers:     resolved.MCPServers,
 	}
+}
+
+func (al *AgentLoop) AgentID() string {
+	if al.agentID == "" {
+		return "default"
+	}
+	return al.agentID
 }
 
 func (al *AgentLoop) Run(ctx context.Context) error {
@@ -175,6 +196,30 @@ func (al *AgentLoop) ProcessDirectWithChannel(ctx context.Context, content, sess
 	}
 
 	return al.processMessage(ctx, msg)
+}
+
+func (al *AgentLoop) ProcessInbound(ctx context.Context, msg bus.InboundMessage) (string, error) {
+	return al.processMessage(ctx, msg)
+}
+
+func configExpandHome(path string) string {
+	if path == "" {
+		return path
+	}
+	if !strings.HasPrefix(path, "~") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
 
 func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage) (string, error) {
@@ -519,6 +564,10 @@ func (al *AgentLoop) maybeSummarize(sessionKey string) {
 // GetStartupInfo returns information about loaded tools and skills for logging.
 func (al *AgentLoop) GetStartupInfo() map[string]interface{} {
 	info := make(map[string]interface{})
+	info["agent_id"] = al.AgentID()
+	info["mcp_servers"] = map[string]interface{}{
+		"count": len(al.mcpServers),
+	}
 
 	// Tools info
 	tools := al.tools.List()

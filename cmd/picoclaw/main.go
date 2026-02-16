@@ -479,17 +479,20 @@ func gatewayCmd() {
 	}
 
 	msgBus := bus.NewMessageBus()
-	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
+	contactsStore := contacts.NewStore(cfg.WorkspacePath())
+	agentManager := agent.NewManager(cfg, msgBus, provider, contactsStore, cfg.Dashboard.ContactsOnly)
+	defaultLoop := agentManager.DefaultLoop()
 
 	// Print agent startup info
 	fmt.Println("\n📦 Agent Status:")
-	startupInfo := agentLoop.GetStartupInfo()
+	startupInfo := defaultLoop.GetStartupInfo()
 	toolsInfo := startupInfo["tools"].(map[string]interface{})
 	skillsInfo := startupInfo["skills"].(map[string]interface{})
 	fmt.Printf("  • Tools: %d loaded\n", toolsInfo["count"])
 	fmt.Printf("  • Skills: %d/%d available\n",
 		skillsInfo["available"],
 		skillsInfo["total"])
+	fmt.Printf("  • Agents: %d configured (default: %s)\n", len(cfg.ListAgentIDs()), cfg.GetDefaultAgentID())
 
 	// Log to file as well
 	logger.InfoCF("agent", "Agent initialized",
@@ -497,10 +500,12 @@ func gatewayCmd() {
 			"tools_count":      toolsInfo["count"],
 			"skills_total":     skillsInfo["total"],
 			"skills_available": skillsInfo["available"],
+			"agent_count":      len(cfg.ListAgentIDs()),
+			"default_agent":    cfg.GetDefaultAgentID(),
 		})
 
 	// Setup cron tool and service
-	cronService := setupCronTool(agentLoop, msgBus, cfg.WorkspacePath())
+	cronService := setupCronTool(defaultLoop, msgBus, cfg.WorkspacePath())
 
 	heartbeatService := heartbeat.NewHeartbeatService(
 		cfg.WorkspacePath(),
@@ -569,14 +574,11 @@ func gatewayCmd() {
 	// to receive QR code events from WhatsApp during login
 	var dashboardServer *dashboard.Server
 	if cfg.Dashboard.Enabled {
-		contactsStore := contacts.NewStore(cfg.WorkspacePath())
-		agentLoop.SetContactsStore(contactsStore, cfg.Dashboard.ContactsOnly)
-
 		dashboardServer = dashboard.NewServer(
 			cfg.Dashboard,
 			cfg,
 			channelManager,
-			agentLoop.GetSessionManager(),
+			defaultLoop.GetSessionManager(),
 			contactsStore,
 			msgBus,
 		)
@@ -592,7 +594,7 @@ func gatewayCmd() {
 		fmt.Printf("Error starting channels: %v\n", err)
 	}
 
-	go agentLoop.Run(ctx)
+	go agentManager.Run(ctx)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -605,7 +607,7 @@ func gatewayCmd() {
 	}
 	heartbeatService.Stop()
 	cronService.Stop()
-	agentLoop.Stop()
+	agentManager.Stop()
 	channelManager.StopAll(ctx)
 	fmt.Println("✓ Gateway stopped")
 }
@@ -833,7 +835,7 @@ func cronHelp() {
 
 func cronListCmd(storePath string) {
 	cs := cron.NewCronService(storePath, nil)
-	jobs := cs.ListJobs(true)  // Show all jobs, including disabled
+	jobs := cs.ListJobs(true) // Show all jobs, including disabled
 
 	if len(jobs) == 0 {
 		fmt.Println("No scheduled jobs.")

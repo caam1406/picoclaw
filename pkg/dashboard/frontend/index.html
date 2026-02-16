@@ -112,6 +112,16 @@
           <input type="text" id="contact-id" placeholder="Ex: 5511982650676">
         </div>
         <div class="form-group">
+          <label>Agente (agent_id)</label>
+          <select id="contact-agent-id" onchange="onContactAgentChange()"></select>
+          <div class="form-hint">Define qual agente responde este contato.</div>
+        </div>
+        <div class="form-group">
+          <label>MCPs Habilitados para este Contato</label>
+          <div id="contact-mcp-list" class="mcp-list"></div>
+          <div class="form-hint">Selecione os MCPs disponiveis para este contato.</div>
+        </div>
+        <div class="form-group">
           <label>Instrucoes Personalizadas para o Agente</label>
           <textarea id="contact-instructions" placeholder="Ex: Responda sempre em ingles. Seja formal e objetivo. O nome desta pessoa e Joao e ele prefere respostas curtas."></textarea>
         </div>
@@ -527,6 +537,27 @@
         </div>
         <div class="warning-box">
           <strong>âš ï¸ Importante:</strong> AlteraÃ§Ãµes de gateway, dashboard, canais e providers exigem reinicializaÃ§Ã£o do PicoClaw.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Agentes e MCPs</div>
+        <div class="form-group">
+          <label>Perfil de Agente</label>
+          <select id="settings-agent-profile" onchange="renderSettingsAgentMCPs()"></select>
+        </div>
+        <div class="inline-form" style="margin-bottom:12px">
+          <input type="text" id="settings-new-agent-id" placeholder="Novo agent_id (ex: sales)">
+          <button class="btn btn-secondary" type="button" onclick="addSettingsAgentProfile()">Criar Agente</button>
+        </div>
+        <div class="form-group">
+          <label>MCPs do Agente</label>
+          <div id="settings-agent-mcp-list" class="mcp-list"></div>
+          <div class="inline-form" style="margin-top:8px">
+            <button class="btn btn-secondary" type="button" onclick="addSettingsAgentMCP()">+ Adicionar MCP</button>
+            <button class="btn btn-primary" type="button" onclick="saveSettingsAgentMCPs()">Salvar MCPs</button>
+          </div>
+          <div class="form-hint">Cadastre MCPs aqui e depois selecione no contato.</div>
         </div>
       </div>
 

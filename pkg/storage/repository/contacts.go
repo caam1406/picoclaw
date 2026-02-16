@@ -7,12 +7,15 @@ import (
 
 // ContactInstruction represents per-contact custom instructions and metadata.
 type ContactInstruction struct {
-	ContactID    string    `json:"contact_id"`
-	Channel      string    `json:"channel"`
-	DisplayName  string    `json:"display_name"`
-	Instructions string    `json:"instructions"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ContactID            string    `json:"contact_id"`
+	Channel              string    `json:"channel"`
+	DisplayName          string    `json:"display_name"`
+	AgentID              string    `json:"agent_id,omitempty"`
+	AllowedMCPs          []string  `json:"allowed_mcps,omitempty"`
+	Instructions         string    `json:"instructions"`
+	ResponseDelaySeconds int       `json:"response_delay_seconds,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // ContactsRepository defines the interface for contact instruction persistence.

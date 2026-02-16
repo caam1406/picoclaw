@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -19,16 +20,20 @@ func NewContactsRepository(db dbExecutor) repository.ContactsRepository {
 }
 
 func (r *contactsRepository) Get(ctx context.Context, channel, contactID string) (*repository.ContactInstruction, error) {
-	query := `SELECT contact_id, channel, display_name, instructions, created_at, updated_at
+	query := `SELECT contact_id, channel, display_name, agent_id, allowed_mcps, instructions, response_delay_seconds, created_at, updated_at
 	          FROM contact_instructions
 	          WHERE channel = $1 AND contact_id = $2`
 
 	var ci repository.ContactInstruction
+	var allowedRaw []byte
 	err := r.db.QueryRowContext(ctx, query, channel, contactID).Scan(
 		&ci.ContactID,
 		&ci.Channel,
 		&ci.DisplayName,
+		&ci.AgentID,
+		&allowedRaw,
 		&ci.Instructions,
+		&ci.ResponseDelaySeconds,
 		&ci.CreatedAt,
 		&ci.UpdatedAt,
 	)
@@ -38,6 +43,9 @@ func (r *contactsRepository) Get(ctx context.Context, channel, contactID string)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if len(allowedRaw) > 0 {
+		_ = json.Unmarshal(allowedRaw, &ci.AllowedMCPs)
 	}
 
 	return &ci, nil
@@ -52,18 +60,25 @@ func (r *contactsRepository) Set(ctx context.Context, ci repository.ContactInstr
 	}
 	ci.UpdatedAt = now
 
-	query := `INSERT INTO contact_instructions (channel, contact_id, display_name, instructions, created_at, updated_at)
-	          VALUES ($1, $2, $3, $4, $5, $6)
+	allowedJSON, _ := json.Marshal(ci.AllowedMCPs)
+	query := `INSERT INTO contact_instructions (channel, contact_id, display_name, agent_id, allowed_mcps, instructions, response_delay_seconds, created_at, updated_at)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	          ON CONFLICT (channel, contact_id) DO UPDATE SET
 	              display_name = EXCLUDED.display_name,
+	              agent_id = EXCLUDED.agent_id,
+	              allowed_mcps = EXCLUDED.allowed_mcps,
 	              instructions = EXCLUDED.instructions,
+	              response_delay_seconds = EXCLUDED.response_delay_seconds,
 	              updated_at = EXCLUDED.updated_at`
 
 	_, err := r.db.ExecContext(ctx, query,
 		ci.Channel,
 		ci.ContactID,
 		ci.DisplayName,
+		ci.AgentID,
+		allowedJSON,
 		ci.Instructions,
+		ci.ResponseDelaySeconds,
 		ci.CreatedAt,
 		ci.UpdatedAt,
 	)
@@ -91,7 +106,7 @@ func (r *contactsRepository) Delete(ctx context.Context, channel, contactID stri
 }
 
 func (r *contactsRepository) List(ctx context.Context) ([]repository.ContactInstruction, error) {
-	query := `SELECT contact_id, channel, display_name, instructions, created_at, updated_at
+	query := `SELECT contact_id, channel, display_name, agent_id, allowed_mcps, instructions, response_delay_seconds, created_at, updated_at
 	          FROM contact_instructions
 	          ORDER BY updated_at DESC`
 
@@ -104,8 +119,12 @@ func (r *contactsRepository) List(ctx context.Context) ([]repository.ContactInst
 	var contacts []repository.ContactInstruction
 	for rows.Next() {
 		var ci repository.ContactInstruction
-		if err := rows.Scan(&ci.ContactID, &ci.Channel, &ci.DisplayName, &ci.Instructions, &ci.CreatedAt, &ci.UpdatedAt); err != nil {
+		var allowedRaw []byte
+		if err := rows.Scan(&ci.ContactID, &ci.Channel, &ci.DisplayName, &ci.AgentID, &allowedRaw, &ci.Instructions, &ci.ResponseDelaySeconds, &ci.CreatedAt, &ci.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if len(allowedRaw) > 0 {
+			_ = json.Unmarshal(allowedRaw, &ci.AllowedMCPs)
 		}
 		contacts = append(contacts, ci)
 	}

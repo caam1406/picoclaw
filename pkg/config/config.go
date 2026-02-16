@@ -27,7 +27,9 @@ type DashboardConfig struct {
 }
 
 type AgentsConfig struct {
-	Defaults AgentDefaults `json:"defaults"`
+	Defaults       AgentDefaults           `json:"defaults"`
+	DefaultProfile string                  `json:"default_profile"`
+	Profiles       map[string]AgentProfile `json:"profiles,omitempty"`
 }
 
 type AgentDefaults struct {
@@ -36,6 +38,23 @@ type AgentDefaults struct {
 	MaxTokens         int     `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
 	Temperature       float64 `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
 	MaxToolIterations int     `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+}
+
+type AgentProfile struct {
+	Workspace         string            `json:"workspace,omitempty"`
+	Model             string            `json:"model,omitempty"`
+	MaxTokens         int               `json:"max_tokens,omitempty"`
+	Temperature       float64           `json:"temperature,omitempty"`
+	MaxToolIterations int               `json:"max_tool_iterations,omitempty"`
+	MCPServers        []MCPServerConfig `json:"mcp_servers,omitempty"`
+}
+
+type MCPServerConfig struct {
+	Name    string            `json:"name"`
+	Enabled bool              `json:"enabled"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 type ChannelsConfig struct {
@@ -91,10 +110,10 @@ type QQConfig struct {
 }
 
 type DingTalkConfig struct {
-	Enabled          bool     `json:"enabled" env:"PICOCLAW_CHANNELS_DINGTALK_ENABLED"`
-	ClientID         string   `json:"client_id" env:"PICOCLAW_CHANNELS_DINGTALK_CLIENT_ID"`
-	ClientSecret     string   `json:"client_secret" env:"PICOCLAW_CHANNELS_DINGTALK_CLIENT_SECRET"`
-	AllowFrom        []string `json:"allow_from" env:"PICOCLAW_CHANNELS_DINGTALK_ALLOW_FROM"`
+	Enabled      bool     `json:"enabled" env:"PICOCLAW_CHANNELS_DINGTALK_ENABLED"`
+	ClientID     string   `json:"client_id" env:"PICOCLAW_CHANNELS_DINGTALK_CLIENT_ID"`
+	ClientSecret string   `json:"client_secret" env:"PICOCLAW_CHANNELS_DINGTALK_CLIENT_SECRET"`
+	AllowFrom    []string `json:"allow_from" env:"PICOCLAW_CHANNELS_DINGTALK_ALLOW_FROM"`
 }
 
 type ProvidersConfig struct {
@@ -148,6 +167,8 @@ func DefaultConfig() *Config {
 				Temperature:       0.7,
 				MaxToolIterations: 20,
 			},
+			DefaultProfile: "default",
+			Profiles:       map[string]AgentProfile{},
 		},
 		Channels: ChannelsConfig{
 			WhatsApp: WhatsAppConfig{
