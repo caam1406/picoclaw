@@ -93,7 +93,7 @@ services:
         fi
         echo "[picoclaw-gateway] using go binary: $${GO_BIN}"
 
-        export PATH="$${HOME}/.local/bin:$${PATH}"
+        export PATH="$${HOME}/go/bin:$${HOME}/.local/bin:$${PATH}"
         if ! command -v uvx >/dev/null 2>&1; then
           echo "[picoclaw-gateway] installing uv/uvx runtime..."
           apt-get update
@@ -106,6 +106,17 @@ services:
           echo "[picoclaw-gateway] uvx detected: $$(command -v uvx)"
         else
           echo "[picoclaw-gateway] WARNING: uvx installation failed; MCPs that use uvx may fail."
+        fi
+
+        if ! command -v gogcli >/dev/null 2>&1; then
+          echo "[picoclaw-gateway] installing gogcli runtime..."
+          "$${GO_BIN}" install github.com/steipete/gogcli@latest
+          export PATH="$${HOME}/go/bin:$${HOME}/.local/bin:$${PATH}"
+        fi
+        if command -v gogcli >/dev/null 2>&1; then
+          echo "[picoclaw-gateway] gogcli detected: $$(command -v gogcli)"
+        else
+          echo "[picoclaw-gateway] WARNING: gogcli installation failed; gogcli tool may fail."
         fi
 
         echo "[picoclaw-gateway] downloading go modules..."
