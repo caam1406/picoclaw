@@ -55,6 +55,10 @@ type processOptions struct {
 	SendResponse    bool   // Whether to send response via bus
 }
 
+type sessionMCPPolicy struct {
+	Allowed map[string]bool
+}
+
 func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider) *AgentLoop {
 	defaultAgentID := cfg.GetDefaultAgentID()
 	return NewAgentLoopForAgent(cfg, msgBus, provider, defaultAgentID)
@@ -321,12 +325,25 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		opts.Channel,
 		opts.ChatID,
 	)
+	mcpPolicy := al.getSessionMCPPolicy(opts.SessionKey)
+	if len(mcpPolicy.Allowed) > 0 {
+		allowedNames := make([]string, 0, len(mcpPolicy.Allowed))
+		for name := range mcpPolicy.Allowed {
+			allowedNames = append(allowedNames, name)
+		}
+		messages = append(messages, providers.Message{
+			Role: "system",
+			Content: "MCP access for this contact is restricted. " +
+				"You can only use MCP servers: " + strings.Join(allowedNames, ", ") +
+				". If MCP access is needed outside this list, ask for permission/update.",
+		})
+	}
 
 	// 3. Save user message to session
 	al.sessions.AddMessage(opts.SessionKey, "user", opts.UserMessage)
 
 	// 4. Run LLM iteration loop
-	finalContent, iteration, err := al.runLLMIteration(ctx, messages, opts)
+	finalContent, iteration, err := al.runLLMIteration(ctx, messages, opts, mcpPolicy)
 	if err != nil {
 		return "", err
 	}
@@ -394,7 +411,7 @@ func (al *AgentLoop) publishOutboundWithContactDelay(ctx context.Context, msg bu
 
 // runLLMIteration executes the LLM call loop with tool handling.
 // Returns the final content, iteration count, and any error.
-func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions) (string, int, error) {
+func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions, mcpPolicy sessionMCPPolicy) (string, int, error) {
 	iteration := 0
 	var finalContent string
 
@@ -408,7 +425,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			})
 
 		// Build tool definitions
-		toolDefs := al.tools.GetDefinitions()
+		toolDefs := al.getToolDefinitionsForPolicy(mcpPolicy)
 		providerToolDefs := make([]providers.ToolDefinition, 0, len(toolDefs))
 		for _, td := range toolDefs {
 			providerToolDefs = append(providerToolDefs, providers.ToolDefinition{
@@ -511,6 +528,18 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 					"iteration": iteration,
 				})
 
+			if !al.isToolAllowedByPolicy(tc.Name, mcpPolicy) {
+				result := "Error: MCP tool is not allowed for this contact."
+				toolResultMsg := providers.Message{
+					Role:       "tool",
+					Content:    result,
+					ToolCallID: tc.ID,
+				}
+				messages = append(messages, toolResultMsg)
+				al.sessions.AddFullMessage(opts.SessionKey, toolResultMsg)
+				continue
+			}
+
 			result, err := al.tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID)
 			if err != nil {
 				result = fmt.Sprintf("Error: %v", err)
@@ -529,6 +558,79 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 	}
 
 	return finalContent, iteration, nil
+}
+
+func (al *AgentLoop) getSessionMCPPolicy(sessionKey string) sessionMCPPolicy {
+	p := sessionMCPPolicy{Allowed: map[string]bool{}}
+	if al.contactsStore == nil || sessionKey == "" {
+		return p
+	}
+	ci := al.contactsStore.GetContactForSession(sessionKey)
+	if ci == nil || len(ci.AllowedMCPs) == 0 {
+		return p
+	}
+	for _, name := range ci.AllowedMCPs {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		p.Allowed[name] = true
+	}
+	return p
+}
+
+func (al *AgentLoop) getToolDefinitionsForPolicy(p sessionMCPPolicy) []map[string]interface{} {
+	defs := al.tools.GetDefinitions()
+	if len(p.Allowed) == 0 {
+		return defs
+	}
+
+	filtered := make([]map[string]interface{}, 0, len(defs))
+	for _, d := range defs {
+		fn, _ := d["function"].(map[string]interface{})
+		name, _ := fn["name"].(string)
+		if al.isToolAllowedByPolicy(name, p) {
+			filtered = append(filtered, d)
+		}
+	}
+	return filtered
+}
+
+func (al *AgentLoop) isToolAllowedByPolicy(toolName string, p sessionMCPPolicy) bool {
+	if len(p.Allowed) == 0 {
+		return true
+	}
+	mcpName := extractMCPServerName(toolName)
+	if mcpName == "" {
+		return true // non-MCP tools remain available
+	}
+	return p.Allowed[mcpName]
+}
+
+func extractMCPServerName(toolName string) string {
+	name := strings.TrimSpace(toolName)
+	if name == "" {
+		return ""
+	}
+	if strings.HasPrefix(name, "mcp.") {
+		parts := strings.Split(name, ".")
+		if len(parts) >= 3 {
+			return parts[1]
+		}
+	}
+	if strings.HasPrefix(name, "mcp_") {
+		parts := strings.Split(name, "_")
+		if len(parts) >= 3 {
+			return parts[1]
+		}
+	}
+	if strings.Contains(name, "__") {
+		parts := strings.Split(name, "__")
+		if len(parts) >= 2 && parts[0] == "mcp" {
+			return parts[1]
+		}
+	}
+	return ""
 }
 
 // updateToolContexts updates the context for tools that need channel/chatID info.
