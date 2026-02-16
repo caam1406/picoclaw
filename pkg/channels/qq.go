@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/tencent-connect/botgo/event"
 	"github.com/tencent-connect/botgo/openapi"
 	"github.com/tencent-connect/botgo/token"
-	"golang.org/x/oauth2"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -22,7 +22,7 @@ type QQChannel struct {
 	*BaseChannel
 	config         config.QQConfig
 	api            openapi.OpenAPI
-	tokenSource    oauth2.TokenSource
+	token          *token.Token
 	ctx            context.Context
 	cancel         context.CancelFunc
 	sessionManager botgo.SessionManager
@@ -47,31 +47,28 @@ func (c *QQChannel) Start(ctx context.Context) error {
 
 	logger.InfoC("qq", "Starting QQ bot (WebSocket mode)")
 
-	// 创建 token source
-	credentials := &token.QQBotCredentials{
-		AppID:     c.config.AppID,
-		AppSecret: c.config.AppSecret,
+	// Parse AppID as uint64
+	appID, err := strconv.ParseUint(c.config.AppID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid app_id %q: %w", c.config.AppID, err)
 	}
-	c.tokenSource = token.NewQQBotTokenSource(credentials)
 
-	// 创建子 context
+	// Create bot token (v0.2.0 API)
+	c.token = token.BotToken(appID, c.config.AppSecret)
+
+	// Create child context
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
-	// 启动自动刷新 token 协程
-	if err := token.StartRefreshAccessToken(c.ctx, c.tokenSource); err != nil {
-		return fmt.Errorf("failed to start token refresh: %w", err)
-	}
+	// Initialize OpenAPI client
+	c.api = botgo.NewOpenAPI(c.token).WithTimeout(5 * time.Second)
 
-	// 初始化 OpenAPI 客户端
-	c.api = botgo.NewOpenAPI(c.config.AppID, c.tokenSource).WithTimeout(5 * time.Second)
-
-	// 注册事件处理器
+	// Register event handlers (v0.2.0: ATMessage for guild @bot, DirectMessage for DMs)
 	intent := event.RegisterHandlers(
-		c.handleC2CMessage(),
-		c.handleGroupATMessage(),
+		c.handleATMessage(),
+		c.handleDirectMessage(),
 	)
 
-	// 获取 WebSocket 接入点
+	// Get WebSocket access point
 	wsInfo, err := c.api.WS(c.ctx, nil, "")
 	if err != nil {
 		return fmt.Errorf("failed to get websocket info: %w", err)
@@ -81,12 +78,12 @@ func (c *QQChannel) Start(ctx context.Context) error {
 		"shards": wsInfo.Shards,
 	})
 
-	// 创建并保存 sessionManager
+	// Create and save sessionManager
 	c.sessionManager = botgo.NewSessionManager()
 
-	// 在 goroutine 中启动 WebSocket 连接，避免阻塞
+	// Start WebSocket connection in goroutine to avoid blocking
 	go func() {
-		if err := c.sessionManager.Start(wsInfo, c.tokenSource, &intent); err != nil {
+		if err := c.sessionManager.Start(wsInfo, c.token, &intent); err != nil {
 			logger.ErrorCF("qq", "WebSocket session error", map[string]interface{}{
 				"error": err.Error(),
 			})
@@ -116,15 +113,15 @@ func (c *QQChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 		return fmt.Errorf("QQ bot not running")
 	}
 
-	// 构造消息
+	// Build message
 	msgToCreate := &dto.MessageToCreate{
 		Content: msg.Content,
 	}
 
-	// C2C 消息发送
-	_, err := c.api.PostC2CMessage(ctx, msg.ChatID, msgToCreate)
+	// Send message to channel (v0.2.0: PostMessage uses channelID)
+	_, err := c.api.PostMessage(ctx, msg.ChatID, msgToCreate)
 	if err != nil {
-		logger.ErrorCF("qq", "Failed to send C2C message", map[string]interface{}{
+		logger.ErrorCF("qq", "Failed to send message", map[string]interface{}{
 			"error": err.Error(),
 		})
 		return err
@@ -133,89 +130,97 @@ func (c *QQChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {
 	return nil
 }
 
-// handleC2CMessage 处理 QQ 私聊消息
-func (c *QQChannel) handleC2CMessage() event.C2CMessageEventHandler {
-	return func(event *dto.WSPayload, data *dto.WSC2CMessageData) error {
-		// 去重检查
-		if c.isDuplicate(data.ID) {
+// handleATMessage handles guild @bot messages (v0.2.0 API)
+func (c *QQChannel) handleATMessage() event.ATMessageEventHandler {
+	return func(event *dto.WSPayload, data *dto.WSATMessageData) error {
+		msg := (*dto.Message)(data)
+
+		// Dedup check
+		if c.isDuplicate(msg.ID) {
 			return nil
 		}
 
-		// 提取用户信息
+		// Extract user info
 		var senderID string
-		if data.Author != nil && data.Author.ID != "" {
-			senderID = data.Author.ID
+		if msg.Author != nil && msg.Author.ID != "" {
+			senderID = msg.Author.ID
 		} else {
-			logger.WarnC("qq", "Received message with no sender ID")
+			logger.WarnC("qq", "Received AT message with no sender ID")
 			return nil
 		}
 
-		// 提取消息内容
-		content := data.Content
+		// Extract message content
+		content := msg.Content
 		if content == "" {
-			logger.DebugC("qq", "Received empty message, ignoring")
+			logger.DebugC("qq", "Received empty AT message, ignoring")
 			return nil
 		}
 
-		logger.InfoCF("qq", "Received C2C message", map[string]interface{}{
-			"sender": senderID,
-			"length": len(content),
+		logger.InfoCF("qq", "Received AT message", map[string]interface{}{
+			"sender":  senderID,
+			"channel": msg.ChannelID,
+			"guild":   msg.GuildID,
+			"length":  len(content),
 		})
 
-		// 转发到消息总线
+		// Forward to message bus (use ChannelID as ChatID for replies)
 		metadata := map[string]string{
-			"message_id": data.ID,
+			"message_id": msg.ID,
+			"channel_id": msg.ChannelID,
+			"guild_id":   msg.GuildID,
 		}
 
-		c.HandleMessage(senderID, senderID, content, []string{}, metadata)
+		c.HandleMessage(senderID, msg.ChannelID, content, []string{}, metadata)
 
 		return nil
 	}
 }
 
-// handleGroupATMessage 处理群@消息
-func (c *QQChannel) handleGroupATMessage() event.GroupATMessageEventHandler {
-	return func(event *dto.WSPayload, data *dto.WSGroupATMessageData) error {
-		// 去重检查
-		if c.isDuplicate(data.ID) {
+// handleDirectMessage handles direct (private) messages (v0.2.0 API)
+func (c *QQChannel) handleDirectMessage() event.DirectMessageEventHandler {
+	return func(event *dto.WSPayload, data *dto.WSDirectMessageData) error {
+		msg := (*dto.Message)(data)
+
+		// Dedup check
+		if c.isDuplicate(msg.ID) {
 			return nil
 		}
 
-		// 提取用户信息
+		// Extract user info
 		var senderID string
-		if data.Author != nil && data.Author.ID != "" {
-			senderID = data.Author.ID
+		if msg.Author != nil && msg.Author.ID != "" {
+			senderID = msg.Author.ID
 		} else {
-			logger.WarnC("qq", "Received group message with no sender ID")
+			logger.WarnC("qq", "Received direct message with no sender ID")
 			return nil
 		}
 
-		// 提取消息内容（去掉 @ 机器人部分）
-		content := data.Content
+		// Extract message content
+		content := msg.Content
 		if content == "" {
-			logger.DebugC("qq", "Received empty group message, ignoring")
+			logger.DebugC("qq", "Received empty direct message, ignoring")
 			return nil
 		}
 
-		logger.InfoCF("qq", "Received group AT message", map[string]interface{}{
+		logger.InfoCF("qq", "Received direct message", map[string]interface{}{
 			"sender": senderID,
-			"group":  data.GroupID,
+			"guild":  msg.GuildID,
 			"length": len(content),
 		})
 
-		// 转发到消息总线（使用 GroupID 作为 ChatID）
+		// Forward to message bus (use GuildID as ChatID for DM replies)
 		metadata := map[string]string{
-			"message_id": data.ID,
-			"group_id":   data.GroupID,
+			"message_id": msg.ID,
+			"guild_id":   msg.GuildID,
 		}
 
-		c.HandleMessage(senderID, data.GroupID, content, []string{}, metadata)
+		c.HandleMessage(senderID, msg.GuildID, content, []string{}, metadata)
 
 		return nil
 	}
 }
 
-// isDuplicate 检查消息是否重复
+// isDuplicate checks if a message has already been processed
 func (c *QQChannel) isDuplicate(messageID string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -226,9 +231,9 @@ func (c *QQChannel) isDuplicate(messageID string) bool {
 
 	c.processedIDs[messageID] = true
 
-	// 简单清理：限制 map 大小
+	// Simple cleanup: limit map size
 	if len(c.processedIDs) > 10000 {
-		// 清空一半
+		// Clear half
 		count := 0
 		for id := range c.processedIDs {
 			if count >= 5000 {

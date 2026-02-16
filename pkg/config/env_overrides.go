@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -61,9 +62,25 @@ func applyEnvOverrides(cfg *Config) bool {
 	}
 
 	setString(&cfg.Storage.Type, env("PICOCLAW_STORAGE_TYPE"))
-	setString(&cfg.Storage.DatabaseURL, env("PICOCLAW_STORAGE_DATABASE_URL"))
+	setString(&cfg.Storage.DatabaseURL, env("PICOCLAW_STORAGE_DATABASE_URL", "PICOCLAW_CONFIG_DATABASE_URL"))
 	setString(&cfg.Storage.FilePath, env("PICOCLAW_STORAGE_FILE_PATH"))
 	setBool(&cfg.Storage.SSLEnabled, env("PICOCLAW_STORAGE_SSL_ENABLED"))
+
+	// If storage type is postgres but no database URL was resolved yet,
+	// build one from individual POSTGRES_* env vars (matches resolveConfigStoreTarget logic).
+	if strings.EqualFold(cfg.Storage.Type, "postgres") && strings.TrimSpace(cfg.Storage.DatabaseURL) == "" {
+		pgUser := strings.TrimSpace(os.Getenv("POSTGRES_USER"))
+		pgPass := strings.TrimSpace(os.Getenv("POSTGRES_PASSWORD"))
+		pgDB := strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+		pgHost := strings.TrimSpace(os.Getenv("POSTGRES_HOST"))
+		if pgHost == "" {
+			pgHost = "postgres"
+		}
+		if pgUser != "" && pgPass != "" && pgDB != "" {
+			built := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", pgUser, pgPass, pgHost, pgDB)
+			setString(&cfg.Storage.DatabaseURL, built)
+		}
+	}
 
 	setString(&cfg.Dashboard.Token, env("PICOCLAW_DASHBOARD_TOKEN", "DASHBOARD_TOKEN"))
 	setString(&cfg.Dashboard.Host, env("PICOCLAW_DASHBOARD_HOST"))

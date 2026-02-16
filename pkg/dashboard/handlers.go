@@ -84,6 +84,21 @@ func (s *Server) buildSetupDiagnostics() map[string]interface{} {
 		})
 	}
 
+	// Check storage configuration
+	if s.cfg != nil {
+		clonedCfg := s.cfg.Clone()
+		if strings.EqualFold(clonedCfg.Storage.Type, "postgres") &&
+			strings.TrimSpace(clonedCfg.Storage.DatabaseURL) == "" {
+			issues = append(issues, map[string]string{
+				"type":    "error",
+				"key":     "storage_not_configured",
+				"title":   "Banco de dados nao configurado",
+				"message": "O tipo de storage e 'postgres' mas nenhuma URL de banco de dados esta configurada. Va em Configuracoes > Storage e preencha a URL do banco.",
+				"action":  "settings",
+			})
+		}
+	}
+
 	return map[string]interface{}{
 		"llm_configured": llmConfigured,
 		"channel_count":  channelCount,

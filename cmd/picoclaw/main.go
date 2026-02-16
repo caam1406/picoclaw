@@ -415,7 +415,7 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print(fmt.Sprintf("%s You: ", logo))
+		fmt.Printf("%s You: ", logo)
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
@@ -462,6 +462,15 @@ func gatewayCmd() {
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// If storage is postgres but database URL is missing, start dashboard-only mode
+	// so the user can configure database settings through the UI.
+	if strings.EqualFold(cfg.Storage.Type, "postgres") && strings.TrimSpace(cfg.Storage.DatabaseURL) == "" {
+		fmt.Println("⚠ Storage type is 'postgres' but database_url is empty.")
+		fmt.Println("  Starting in dashboard-only mode for configuration...")
+		startDashboardOnly(cfg)
+		return
 	}
 
 	// Dynamic provider enables live LLM config updates from dashboard without gateway restart.
