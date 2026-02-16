@@ -1,13 +1,52 @@
 services:
+  init-secrets:
+    image: alpine:3.20
+    container_name: picoclaw-init-secrets
+    environment:
+      DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - picoclaw_secrets:/run/picoclaw-secrets
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+        umask 077
+        mkdir -p /run/picoclaw-secrets
+
+        if [ ! -s /run/picoclaw-secrets/postgres_password ]; then
+          if [ -n "${POSTGRES_PASSWORD:-}" ]; then
+            printf "%s" "${POSTGRES_PASSWORD}" > /run/picoclaw-secrets/postgres_password
+          else
+            head -c 48 /dev/urandom | base64 | tr -d '\n' > /run/picoclaw-secrets/postgres_password
+          fi
+        fi
+
+        if [ ! -s /run/picoclaw-secrets/dashboard_token ]; then
+          if [ -n "${DASHBOARD_TOKEN:-}" ]; then
+            printf "%s" "${DASHBOARD_TOKEN}" > /run/picoclaw-secrets/dashboard_token
+          else
+            head -c 48 /dev/urandom | base64 | tr -d '\n' > /run/picoclaw-secrets/dashboard_token
+          fi
+        fi
+
+        chmod 600 /run/picoclaw-secrets/postgres_password /run/picoclaw-secrets/dashboard_token
+    restart: "no"
+
   postgres:
     image: postgres:16-alpine
     container_name: picoclaw-postgres
+    depends_on:
+      init-secrets:
+        condition: service_completed_successfully
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-picoclaw}
       POSTGRES_USER: ${POSTGRES_USER:-picoclaw}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-picoclaw}
+      POSTGRES_PASSWORD_FILE: /run/picoclaw-secrets/postgres_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - picoclaw_secrets:/run/picoclaw-secrets:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-picoclaw} -d ${POSTGRES_DB:-picoclaw}"]
       interval: 10s
@@ -19,6 +58,8 @@ services:
     image: golang:1.24-bookworm
     container_name: picoclaw-gateway
     depends_on:
+      init-secrets:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     ports:
@@ -28,22 +69,22 @@ services:
     volumes:
       - picoclaw_data:/root/.picoclaw
       - picoclaw_src:/opt/picoclaw
+      - picoclaw_secrets:/run/picoclaw-secrets:ro
     environment:
       TZ: ${TZ:-UTC}
       REPO_URL: ${REPO_URL:-https://github.com/caam1406/picoclaw.git}
       REPO_BRANCH: ${REPO_BRANCH:-main}
-      DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-CHANGE_ME_DASHBOARD_TOKEN}
-      PICOCLAW_DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-CHANGE_ME_DASHBOARD_TOKEN}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       PICOCLAW_PROVIDERS_OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       POSTGRES_DB: ${POSTGRES_DB:-picoclaw}
       POSTGRES_USER: ${POSTGRES_USER:-picoclaw}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-picoclaw}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       PICOCLAW_STORAGE_TYPE: ${PICOCLAW_STORAGE_TYPE:-postgres}
-      PICOCLAW_STORAGE_DATABASE_URL: ${PICOCLAW_STORAGE_DATABASE_URL:-postgres://${POSTGRES_USER:-picoclaw}:${POSTGRES_PASSWORD:-picoclaw}@postgres:5432/${POSTGRES_DB:-picoclaw}?sslmode=disable}
+      PICOCLAW_STORAGE_DATABASE_URL: ${PICOCLAW_STORAGE_DATABASE_URL:-}
       PICOCLAW_STORAGE_FILE_PATH: ${PICOCLAW_STORAGE_FILE_PATH:-~/.picoclaw/workspace/sessions}
       PICOCLAW_STORAGE_SSL_ENABLED: ${PICOCLAW_STORAGE_SSL_ENABLED:-false}
-      PICOCLAW_CONFIG_DATABASE_URL: ${PICOCLAW_CONFIG_DATABASE_URL:-postgres://${POSTGRES_USER:-picoclaw}:${POSTGRES_PASSWORD:-picoclaw}@postgres:5432/${POSTGRES_DB:-picoclaw}?sslmode=disable}
+      PICOCLAW_CONFIG_DATABASE_URL: ${PICOCLAW_CONFIG_DATABASE_URL:-}
+      PICOCLAW_DASHBOARD_TOKEN: ${PICOCLAW_DASHBOARD_TOKEN:-}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18791/ >/dev/null || exit 1"]
       interval: 15s
@@ -57,6 +98,22 @@ services:
         set -euo pipefail
         echo "[picoclaw-gateway] initializing..."
         echo "[picoclaw-gateway] repo=$${REPO_URL} branch=$${REPO_BRANCH}"
+
+        SECRETS_DIR=/run/picoclaw-secrets
+        if [ -s "$${SECRETS_DIR}/postgres_password" ]; then
+          POSTGRES_PASSWORD="$$(cat "$${SECRETS_DIR}/postgres_password")"
+          export POSTGRES_PASSWORD
+        fi
+        if [ -s "$${SECRETS_DIR}/dashboard_token" ] && [ -z "$${PICOCLAW_DASHBOARD_TOKEN:-}" ]; then
+          export PICOCLAW_DASHBOARD_TOKEN="$$(cat "$${SECRETS_DIR}/dashboard_token")"
+        fi
+
+        if [ -z "$${PICOCLAW_STORAGE_DATABASE_URL:-}" ]; then
+          export PICOCLAW_STORAGE_DATABASE_URL="postgres://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:5432/$${POSTGRES_DB}?sslmode=disable"
+        fi
+        if [ -z "$${PICOCLAW_CONFIG_DATABASE_URL:-}" ]; then
+          export PICOCLAW_CONFIG_DATABASE_URL="$${PICOCLAW_STORAGE_DATABASE_URL}"
+        fi
 
         if [ ! -d /opt/picoclaw/.git ]; then
           echo "[picoclaw-gateway] cloning repository..."
@@ -92,3 +149,4 @@ volumes:
   postgres_data:
   picoclaw_data:
   picoclaw_src:
+  picoclaw_secrets:

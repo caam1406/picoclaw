@@ -126,7 +126,7 @@ cd picoclaw
 
 # 2) Configure variaveis do compose
 cp .env.example .env
-# edite .env com DASHBOARD_TOKEN, OPENROUTER_API_KEY e POSTGRES_PASSWORD
+# edite .env com OPENROUTER_API_KEY (DASHBOARD_TOKEN e POSTGRES_PASSWORD sao opcionais)
 
 # 3) Start
 docker compose up -d
@@ -142,7 +142,8 @@ Notas:
 - O compose inclui `postgres` com healthcheck e volume persistente.
 - O servico `picoclaw-gateway` clona/atualiza o repositorio em `REPO_URL` e compila no startup.
 - O volume `picoclaw_data` persiste config/workspace do PicoClaw.
-- No primeiro boot, a configuracao inicial e criada com `storage.type=postgres` e dashboard em `0.0.0.0:18791`.
+- O volume `picoclaw_secrets` persiste secrets gerados automaticamente (`postgres_password` e `dashboard_token`).
+- Se `POSTGRES_PASSWORD`/`DASHBOARD_TOKEN` estiverem vazios no `.env`, o compose gera valores fortes automaticamente no primeiro boot.
 - O arquivo `.env.example` documenta todas as variaveis esperadas pelo compose.
 
 ### 🚀 Quick Start

@@ -136,8 +136,12 @@ func resolveConfigStoreTarget(path string) (string, string, error) {
 		pgUser := strings.TrimSpace(os.Getenv("POSTGRES_USER"))
 		pgPass := strings.TrimSpace(os.Getenv("POSTGRES_PASSWORD"))
 		pgDB := strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+		pgHost := strings.TrimSpace(os.Getenv("POSTGRES_HOST"))
+		if pgHost == "" {
+			pgHost = "postgres"
+		}
 		if pgUser != "" && pgPass != "" && pgDB != "" {
-			configDBURL = fmt.Sprintf("postgres://%s:%s@postgres:5432/%s?sslmode=disable", pgUser, pgPass, pgDB)
+			configDBURL = fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", pgUser, pgPass, pgHost, pgDB)
 		}
 	}
 
