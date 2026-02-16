@@ -108,27 +108,43 @@ services:
           export PICOCLAW_DASHBOARD_TOKEN="$$(cat "$${SECRETS_DIR}/dashboard_token")"
         fi
 
-        RESOLVED_PG_HOST="$${POSTGRES_HOST:-postgres}"
-        if ! getent hosts "$${RESOLVED_PG_HOST}" >/dev/null 2>&1; then
-          for candidate in postgres picoclaw-postgres db database; do
-            if getent hosts "$${candidate}" >/dev/null 2>&1; then
-              RESOLVED_PG_HOST="$${candidate}"
+        if [ -z "$${PICOCLAW_STORAGE_DATABASE_URL:-}" ] || [ -z "$${PICOCLAW_CONFIG_DATABASE_URL:-}" ]; then
+          RESOLVED_PG_HOST="$${POSTGRES_HOST:-postgres}"
+          CANDIDATES="$${RESOLVED_PG_HOST} postgres picoclaw-postgres db database"
+          FOUND_HOST=""
+          echo "[picoclaw-gateway] resolving postgres host candidates: $${CANDIDATES}"
+
+          for attempt in $$(seq 1 60); do
+            for candidate in $${CANDIDATES}; do
+              if getent hosts "$${candidate}" >/dev/null 2>&1; then
+                if timeout 1 bash -c ">/dev/tcp/$${candidate}/5432" 2>/dev/null; then
+                  FOUND_HOST="$${candidate}"
+                  break
+                fi
+              fi
+            done
+            if [ -n "$${FOUND_HOST}" ]; then
               break
             fi
+            sleep 1
           done
-        fi
-        if ! getent hosts "$${RESOLVED_PG_HOST}" >/dev/null 2>&1; then
-          echo "[picoclaw-gateway] ERROR: could not resolve postgres host. Set POSTGRES_HOST in .env."
-          exit 1
-        fi
-        export POSTGRES_HOST="$${RESOLVED_PG_HOST}"
-        echo "[picoclaw-gateway] postgres host resolved to: $${POSTGRES_HOST}"
 
-        if [ -z "$${PICOCLAW_STORAGE_DATABASE_URL:-}" ]; then
-          export PICOCLAW_STORAGE_DATABASE_URL="postgres://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:5432/$${POSTGRES_DB}?sslmode=disable"
-        fi
-        if [ -z "$${PICOCLAW_CONFIG_DATABASE_URL:-}" ]; then
-          export PICOCLAW_CONFIG_DATABASE_URL="$${PICOCLAW_STORAGE_DATABASE_URL}"
+          if [ -z "$${FOUND_HOST}" ]; then
+            echo "[picoclaw-gateway] ERROR: could not resolve/connect to postgres:5432 after 60s."
+            echo "[picoclaw-gateway] HINT: set POSTGRES_HOST to the real service hostname in your environment."
+            echo "[picoclaw-gateway] DNS: $$(cat /etc/resolv.conf | tr '\n' ' ' || true)"
+            exit 1
+          fi
+
+          export POSTGRES_HOST="$${FOUND_HOST}"
+          echo "[picoclaw-gateway] postgres host resolved to: $${POSTGRES_HOST}"
+
+          if [ -z "$${PICOCLAW_STORAGE_DATABASE_URL:-}" ]; then
+            export PICOCLAW_STORAGE_DATABASE_URL="postgres://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@$${POSTGRES_HOST}:5432/$${POSTGRES_DB}?sslmode=disable"
+          fi
+          if [ -z "$${PICOCLAW_CONFIG_DATABASE_URL:-}" ]; then
+            export PICOCLAW_CONFIG_DATABASE_URL="$${PICOCLAW_STORAGE_DATABASE_URL}"
+          fi
         fi
 
         if [ ! -d /opt/picoclaw/.git ]; then
