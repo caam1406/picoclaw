@@ -35,7 +35,7 @@ services:
     restart: "no"
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18.2-alpine
     container_name: picoclaw-postgres
     depends_on:
       init-secrets:
@@ -146,6 +146,9 @@ services:
             export PICOCLAW_CONFIG_DATABASE_URL="$${PICOCLAW_STORAGE_DATABASE_URL}"
           fi
         fi
+
+        echo "[picoclaw-gateway] storage database url: $${PICOCLAW_STORAGE_DATABASE_URL}"
+        echo "[picoclaw-gateway] config database url: $${PICOCLAW_CONFIG_DATABASE_URL}"
 
         if [ ! -d /opt/picoclaw/.git ]; then
           echo "[picoclaw-gateway] cloning repository..."
