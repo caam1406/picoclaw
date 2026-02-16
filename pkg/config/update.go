@@ -24,6 +24,19 @@ func (c *Config) EnsureDashboardToken() (string, bool, error) {
 	return token, true, nil
 }
 
+func (c *Config) RotateDashboardToken() (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	token, err := generateToken(24)
+	if err != nil {
+		return "", err
+	}
+
+	c.Dashboard.Token = token
+	return token, nil
+}
+
 func generateToken(length int) (string, error) {
 	buf := make([]byte, length)
 	if _, err := rand.Read(buf); err != nil {

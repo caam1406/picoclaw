@@ -141,6 +141,8 @@ func main() {
 		}
 	case "version", "--version", "-v":
 		fmt.Printf("%s picoclaw v%s\n", logo, version)
+	case "dashboard":
+		dashboardCmd()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printHelp()
@@ -159,6 +161,7 @@ func printHelp() {
 	fmt.Println("  status      Show picoclaw status")
 	fmt.Println("  cron        Manage scheduled tasks")
 	fmt.Println("  skills      Manage skills (install, list, remove)")
+	fmt.Println("  dashboard   Dashboard utilities (token show/reset)")
 	fmt.Println("  version     Show version information")
 }
 
@@ -744,6 +747,81 @@ func statusCmd() {
 			fmt.Println("vLLM/Local: not set")
 		}
 	}
+}
+
+func dashboardCmd() {
+	if len(os.Args) < 3 {
+		dashboardHelp()
+		return
+	}
+
+	subcommand := os.Args[2]
+	switch subcommand {
+	case "token":
+		dashboardTokenCmd()
+	default:
+		fmt.Printf("Unknown dashboard command: %s\n", subcommand)
+		dashboardHelp()
+	}
+}
+
+func dashboardHelp() {
+	fmt.Println("\nDashboard commands:")
+	fmt.Println("  token              Show current dashboard token (generate if missing)")
+	fmt.Println("  token reset        Generate and persist a new dashboard token")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  picoclaw dashboard token")
+	fmt.Println("  picoclaw dashboard token reset")
+}
+
+func dashboardTokenCmd() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	reset := len(os.Args) >= 4 && os.Args[3] == "reset"
+	if len(os.Args) >= 4 && !reset {
+		fmt.Printf("Unknown dashboard token option: %s\n", os.Args[3])
+		dashboardHelp()
+		return
+	}
+
+	var token string
+	if reset {
+		token, err = cfg.RotateDashboardToken()
+		if err != nil {
+			fmt.Printf("Error rotating dashboard token: %v\n", err)
+			os.Exit(1)
+		}
+		if err := cfg.Save(); err != nil {
+			fmt.Printf("Error saving config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Dashboard token rotated successfully.")
+	} else {
+		var generated bool
+		token, generated, err = cfg.EnsureDashboardToken()
+		if err != nil {
+			fmt.Printf("Error ensuring dashboard token: %v\n", err)
+			os.Exit(1)
+		}
+		if generated {
+			if err := cfg.Save(); err != nil {
+				fmt.Printf("Error saving config: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println("Dashboard token generated successfully.")
+		} else {
+			cfgToken := strings.TrimSpace(cfg.Dashboard.Token)
+			token = cfgToken
+		}
+	}
+
+	fmt.Printf("Dashboard URL: http://%s:%d\n", cfg.Dashboard.Host, cfg.Dashboard.Port)
+	fmt.Printf("Dashboard token: %s\n", token)
 }
 
 func getConfigDBPath() string {
