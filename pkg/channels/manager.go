@@ -313,15 +313,16 @@ func (m *Manager) StartWhatsApp(ctx context.Context) error {
 
 	// Ensure outbound dispatcher is running
 	if m.dispatchTask == nil {
-		dispatchCtx, cancel := context.WithCancel(ctx)
+		dispatchCtx, cancel := context.WithCancel(context.Background())
 		m.dispatchTask = &asyncTask{cancel: cancel}
 		go m.dispatchOutbound(dispatchCtx)
 	}
 
 	// Start in a goroutine so loginWithQR doesn't block the API response
+	startCtx := context.Background()
 	go func() {
 		logger.InfoC("channels", "Starting WhatsApp channel on demand")
-		if err := whatsapp.Start(ctx); err != nil {
+		if err := whatsapp.Start(startCtx); err != nil {
 			logger.ErrorCF("channels", "Failed to start WhatsApp channel", map[string]interface{}{
 				"error": err.Error(),
 			})
