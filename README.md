@@ -115,7 +115,7 @@ make build-all
 make install
 ```
 
-### Docker Compose (gateway + dashboard + postgres)
+### Docker Compose (gateway + dashboard)
 
 Use este fluxo para subir em servidor com um unico arquivo `docker-compose.yml` (sem Dockerfile).
 
@@ -126,7 +126,7 @@ cd picoclaw
 
 # 2) Configure variaveis do compose
 cp .env.example .env
-# edite .env com OPENROUTER_API_KEY (DASHBOARD_TOKEN e POSTGRES_PASSWORD sao opcionais)
+# edite .env com OPENROUTER_API_KEY (DASHBOARD_TOKEN opcional)
 
 # 3) Start
 docker compose up -d
@@ -139,11 +139,10 @@ docker compose down
 ```
 
 Notas:
-- O compose inclui `postgres` com healthcheck e volume persistente.
 - O servico `picoclaw-gateway` clona/atualiza o repositorio em `REPO_URL` e compila no startup.
 - O volume `picoclaw_data` persiste config/workspace do PicoClaw.
-- O volume `picoclaw_secrets` persiste secrets gerados automaticamente (`postgres_password` e `dashboard_token`).
-- Se `POSTGRES_PASSWORD`/`DASHBOARD_TOKEN` estiverem vazios no `.env`, o compose gera valores fortes automaticamente no primeiro boot.
+- O volume `picoclaw_secrets` persiste secret gerado automaticamente (`dashboard_token`).
+- Se `DASHBOARD_TOKEN` estiver vazio no `.env`, o compose gera um valor forte automaticamente no primeiro boot.
 - O arquivo `.env.example` documenta todas as variaveis esperadas pelo compose.
 
 ### 🚀 Quick Start
