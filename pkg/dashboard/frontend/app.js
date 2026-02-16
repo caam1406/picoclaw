@@ -14,14 +14,14 @@ let waSelfJid = ''; // logged-in WhatsApp number (JID) when channel is connected
 let mcpStatusPoll = null;
 const MAX_LIVE_MESSAGES = 200;
 
-// ─── Init ───────────────────────────────────────────────────────────
+// --- Init ------------------------------------------------------------
 window.addEventListener('DOMContentLoaded', () => {
   if (token) {
     enterDashboard();
   }
 });
 
-// ─── Auth ───────────────────────────────────────────────────────────
+// --- Auth ------------------------------------------------------------
 function doLogin() {
   const input = document.getElementById('token-input');
   token = input.value.trim();
@@ -61,7 +61,7 @@ function enterDashboard() {
   checkSetupStatus();
 }
 
-// ─── API Helper ─────────────────────────────────────────────────────
+// --- API Helper ------------------------------------------------------
 function apiFetch(path, opts = {}) {
   const url = path;
   const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
@@ -74,7 +74,7 @@ function apiFetch(path, opts = {}) {
   });
 }
 
-// ─── WebSocket ──────────────────────────────────────────────────────
+// --- WebSocket -------------------------------------------------------
 function connectWebSocket() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = proto + '//' + location.host + '/ws?token=' + encodeURIComponent(token);
@@ -222,7 +222,7 @@ function resolveInboundSender(inbound) {
   return resolvedID;
 }
 
-// ─── Load Data ──────────────────────────────────────────────────────
+// --- Load Data -------------------------------------------------------
 function loadOverview() {
   Promise.all([
     apiFetch('/api/v1/status'),
@@ -324,7 +324,7 @@ function loadContacts() {
   }).catch(() => {});
 }
 
-// ─── Views ──────────────────────────────────────────────────────────
+// --- Views -----------------------------------------------------------
 function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const view = document.getElementById('view-' + name);
@@ -340,7 +340,7 @@ function showView(name) {
   if (name === 'defaults') loadDefaults();
 }
 
-// ─── Contact CRUD ───────────────────────────────────────────────────
+// --- Contact CRUD ----------------------------------------------------
 function ensureAppConfigLoaded() {
   if (currentConfig) return Promise.resolve(currentConfig);
   return apiFetch('/api/v1/config').then(data => {
@@ -804,7 +804,7 @@ function deleteContact() {
   });
 }
 
-// ─── Default Instructions CRUD ───────────────────────────────────────
+// --- Default Instructions CRUD --------------------------------------
 function getDefaultLabel(channel) {
   if (channel === '*') return 'Global';
   return capitalize(channel);
@@ -913,7 +913,7 @@ function deleteDefault() {
   });
 }
 
-// ─── Toast ──────────────────────────────────────────────────────────
+// --- Toast -----------------------------------------------------------
 function loadSettings() {
   loadStorageConfig();
   loadAppConfig();
@@ -1218,7 +1218,7 @@ function toast(msg, isError) {
   setTimeout(() => el.classList.remove('show'), 2500);
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────
+// --- Helpers ---------------------------------------------------------
 function setValue(id, value) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -1301,7 +1301,7 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// ─── Storage Configuration ──────────────────────────────────────────
+// --- Storage Configuration ------------------------------------------
 function loadStorageConfig() {
   apiFetch('/api/v1/config/storage').then(data => {
     document.getElementById('storage-type').value = data.type || 'file';
@@ -1339,7 +1339,7 @@ function testStorageConnection() {
 
   const resultDiv = document.getElementById('storage-test-result');
   resultDiv.className = 'storage-result';
-  resultDiv.textContent = 'Testando conexão...';
+  resultDiv.textContent = 'Testando conexao...';
   resultDiv.classList.add('show');
 
   apiFetch('/api/v1/config/storage/test', {
@@ -1353,14 +1353,14 @@ function testStorageConnection() {
   }).then(data => {
     if (data.success) {
       resultDiv.className = 'storage-result success show';
-      resultDiv.textContent = '✓ Conexão bem-sucedida! Storage está acessível.';
+      resultDiv.textContent = '[OK] Conexao bem-sucedida! Storage esta acessivel.';
     } else {
       resultDiv.className = 'storage-result error show';
-      resultDiv.textContent = '✗ Erro: ' + (data.error || 'Falha ao conectar');
+      resultDiv.textContent = '[ERRO] ' + (data.error || 'Falha ao conectar');
     }
   }).catch(err => {
     resultDiv.className = 'storage-result error show';
-    resultDiv.textContent = '✗ Erro ao testar conexão: ' + err.message;
+    resultDiv.textContent = '[ERRO] Erro ao testar conexao: ' + err.message;
   });
 }
 
@@ -1371,17 +1371,17 @@ function saveStorageConfig() {
   const sslEnabled = document.getElementById('storage-ssl-enabled').checked;
 
   if (type === 'sqlite') {
-    toast('SQLite ainda não está implementado', true);
+    toast('SQLite ainda nao esta implementado', true);
     return;
   }
 
   if (type === 'postgres' && !url) {
-    toast('Database URL é obrigatória para PostgreSQL', true);
+    toast('Database URL e obrigatoria para PostgreSQL', true);
     return;
   }
 
   if (type === 'file' && !filePath) {
-    toast('Caminho do workspace é obrigatório para file-based storage', true);
+    toast('Caminho do workspace e obrigatorio para file-based storage', true);
     return;
   }
 
@@ -1395,12 +1395,12 @@ function saveStorageConfig() {
     })
   }).then(data => {
     if (data.success) {
-      toast('Configuração salva! Reinicie o PicoClaw para aplicar.');
+      toast('Configuracao salva! Reinicie o PicoClaw para aplicar.');
       const resultDiv = document.getElementById('storage-test-result');
       resultDiv.className = 'storage-result success show';
-      resultDiv.innerHTML = '<strong>✓ Configuração salva com sucesso!</strong><br>Por favor, reinicie o PicoClaw para que as alterações entrem em efeito.';
+      resultDiv.innerHTML = '<strong>[OK] Configuracao salva com sucesso!</strong><br>Por favor, reinicie o PicoClaw para que as alteracoes entrem em efeito.';
     } else {
-      toast('Erro ao salvar configuração', true);
+      toast('Erro ao salvar configuracao', true);
     }
   }).catch(err => {
     toast('Erro ao salvar: ' + err.message, true);
@@ -1415,7 +1415,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// ─── QR Code ─────────────────────────────────────────────────────────
+// --- QR Code ---------------------------------------------------------
 function handleQREvent(qr) {
   qrState = qr;
 
@@ -1595,7 +1595,7 @@ function pollForQR(attempt) {
   }, 1000);
 }
 
-// ─── Setup Status ────────────────────────────────────────────────────
+// --- Setup Status ----------------------------------------------------
 function checkSetupStatus() {
   apiFetch('/api/v1/status').then(data => {
     const container = document.getElementById('setup-alerts');
@@ -1608,8 +1608,8 @@ function checkSetupStatus() {
     }
 
     const icons = {
-      error: '⚠',
-      warning: '💡'
+      error: '!',
+      warning: 'i'
     };
 
     const actionLabels = {
@@ -1617,7 +1617,7 @@ function checkSetupStatus() {
     };
 
     container.innerHTML = setup.issues.map(issue => {
-      const icon = icons[issue.type] || '📋';
+      const icon = icons[issue.type] || '#';
       const actionBtn = issue.action
         ? `<div class="setup-alert-action"><button class="btn-alert-action" onclick="showView('${issue.action}')">${actionLabels[issue.action] || 'Abrir'}</button></div>`
         : '';
