@@ -259,6 +259,11 @@ func LoadConfig(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if applyEnvOverrides(cfg) {
+		if err := saveConfigToStore(path, cfg); err != nil {
+			return nil, err
+		}
+	}
 	cfg.storePath = path
 	return cfg, nil
 }

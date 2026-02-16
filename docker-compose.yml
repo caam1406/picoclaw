@@ -33,10 +33,16 @@ services:
       REPO_URL: ${REPO_URL:-https://github.com/caam1406/picoclaw.git}
       REPO_BRANCH: ${REPO_BRANCH:-main}
       DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-CHANGE_ME_DASHBOARD_TOKEN}
+      PICOCLAW_DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-CHANGE_ME_DASHBOARD_TOKEN}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      PICOCLAW_PROVIDERS_OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       POSTGRES_DB: ${POSTGRES_DB:-picoclaw}
       POSTGRES_USER: ${POSTGRES_USER:-picoclaw}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-picoclaw}
+      PICOCLAW_STORAGE_TYPE: ${PICOCLAW_STORAGE_TYPE:-postgres}
+      PICOCLAW_STORAGE_DATABASE_URL: ${PICOCLAW_STORAGE_DATABASE_URL:-postgres://${POSTGRES_USER:-picoclaw}:${POSTGRES_PASSWORD:-picoclaw}@postgres:5432/${POSTGRES_DB:-picoclaw}?sslmode=disable}
+      PICOCLAW_STORAGE_FILE_PATH: ${PICOCLAW_STORAGE_FILE_PATH:-~/.picoclaw/workspace/sessions}
+      PICOCLAW_STORAGE_SSL_ENABLED: ${PICOCLAW_STORAGE_SSL_ENABLED:-false}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18791/ >/dev/null || exit 1"]
       interval: 15s
@@ -76,63 +82,6 @@ services:
         "$${GO_BIN}" mod download
         echo "[picoclaw-gateway] building binary..."
         "$${GO_BIN}" build -o /usr/local/bin/picoclaw ./cmd/picoclaw
-
-        if [ ! -f /root/.picoclaw/picoclaw.db ]; then
-          echo "[picoclaw-gateway] first boot: writing bootstrap config..."
-          mkdir -p /root/.picoclaw
-          cat > /root/.picoclaw/config.json <<EOF
-        {
-          "agents": {
-            "default_profile": "default",
-            "defaults": {
-              "workspace": "~/.picoclaw/workspace",
-              "model": "glm-4.5",
-              "max_tokens": 8192,
-              "temperature": 0.1,
-              "max_tool_iterations": 20
-            },
-            "profiles": {}
-          },
-          "providers": {
-            "openrouter": {
-              "api_key": "$${OPENROUTER_API_KEY}",
-              "api_base": "https://openrouter.ai/api/v1"
-            },
-            "anthropic": {"api_key": "", "api_base": ""},
-            "openai": {"api_key": "", "api_base": ""},
-            "groq": {"api_key": "", "api_base": ""},
-            "zhipu": {"api_key": "", "api_base": ""},
-            "zai": {"api_key": "", "api_base": ""},
-            "gemini": {"api_key": "", "api_base": ""},
-            "vllm": {"api_key": "", "api_base": ""}
-          },
-          "channels": {
-            "whatsapp": {"enabled": false, "store_path": "~/.picoclaw/whatsapp.db", "allow_from": []},
-            "telegram": {"enabled": false, "token": "", "allow_from": []},
-            "discord": {"enabled": false, "token": "", "allow_from": []},
-            "feishu": {"enabled": false, "app_id": "", "app_secret": "", "encrypt_key": "", "verification_token": "", "allow_from": []},
-            "qq": {"enabled": false, "app_id": "", "app_secret": "", "allow_from": []},
-            "dingtalk": {"enabled": false, "client_id": "", "client_secret": "", "allow_from": []},
-            "maixcam": {"enabled": false, "host": "0.0.0.0", "port": 18790, "allow_from": []}
-          },
-          "tools": {"web": {"search": {"api_key": "", "max_results": 5}}},
-          "gateway": {"host": "0.0.0.0", "port": 18790},
-          "dashboard": {
-            "enabled": true,
-            "host": "0.0.0.0",
-            "port": 18791,
-            "token": "$${DASHBOARD_TOKEN}",
-            "contacts_only": false
-          },
-          "storage": {
-            "type": "postgres",
-            "database_url": "postgres://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@postgres:5432/$${POSTGRES_DB}?sslmode=disable",
-            "file_path": "~/.picoclaw/workspace/sessions",
-            "ssl_enabled": false
-          }
-        }
-        EOF
-        fi
 
         echo "[picoclaw-gateway] starting gateway and dashboard..."
         exec /usr/local/bin/picoclaw gateway --debug
