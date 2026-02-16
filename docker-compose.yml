@@ -43,6 +43,7 @@ services:
       PICOCLAW_STORAGE_DATABASE_URL: ${PICOCLAW_STORAGE_DATABASE_URL:-postgres://${POSTGRES_USER:-picoclaw}:${POSTGRES_PASSWORD:-picoclaw}@postgres:5432/${POSTGRES_DB:-picoclaw}?sslmode=disable}
       PICOCLAW_STORAGE_FILE_PATH: ${PICOCLAW_STORAGE_FILE_PATH:-~/.picoclaw/workspace/sessions}
       PICOCLAW_STORAGE_SSL_ENABLED: ${PICOCLAW_STORAGE_SSL_ENABLED:-false}
+      PICOCLAW_CONFIG_DATABASE_URL: ${PICOCLAW_CONFIG_DATABASE_URL:-postgres://${POSTGRES_USER:-picoclaw}:${POSTGRES_PASSWORD:-picoclaw}@postgres:5432/${POSTGRES_DB:-picoclaw}?sslmode=disable}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18791/ >/dev/null || exit 1"]
       interval: 15s
