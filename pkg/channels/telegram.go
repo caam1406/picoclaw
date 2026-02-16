@@ -180,7 +180,7 @@ func (c *TelegramChannel) handleMessage(update tgbotapi.Update) {
 		content += message.Caption
 	}
 
-	if message.Photo != nil && len(message.Photo) > 0 {
+	if len(message.Photo) > 0 {
 		photo := message.Photo[len(message.Photo)-1]
 		photoPath := c.downloadPhoto(photo.FileID)
 		if photoPath != "" {
