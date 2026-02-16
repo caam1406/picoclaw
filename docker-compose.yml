@@ -37,6 +37,7 @@ services:
   postgres:
     image: postgres:18.2-alpine
     container_name: picoclaw-postgres
+    hostname: postgres
     depends_on:
       init-secrets:
         condition: service_completed_successfully
@@ -48,6 +49,13 @@ services:
     volumes:
       - postgres18_data:/var/lib/postgresql
       - picoclaw_secrets:/run/picoclaw-secrets:ro
+    networks:
+      picoclaw_net:
+        aliases:
+          - postgres
+          - picoclaw-postgres
+          - db
+          - database
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-picoclaw} -d ${POSTGRES_DB:-picoclaw}"]
       interval: 10s
@@ -71,6 +79,8 @@ services:
       - picoclaw_data:/root/.picoclaw
       - picoclaw_src:/opt/picoclaw
       - picoclaw_secrets:/run/picoclaw-secrets:ro
+    networks:
+      - picoclaw_net
     environment:
       TZ: ${TZ:-UTC}
       REPO_URL: ${REPO_URL:-https://github.com/caam1406/picoclaw.git}
@@ -186,3 +196,7 @@ volumes:
   picoclaw_data:
   picoclaw_src:
   picoclaw_secrets:
+
+networks:
+  picoclaw_net:
+    driver: bridge
