@@ -86,7 +86,7 @@ func (r *Runtime) Start(ctx context.Context) {
 func (r *Runtime) connectServer(ctx context.Context, s config.MCPServerConfig) {
 	name := strings.TrimSpace(s.Name)
 
-	serverCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	serverCtx, cancel := context.WithTimeout(ctx, 120*time.Second) // uvx first-run may download Python + packages
 	client, err := StartClient(serverCtx, name, s.Command, s.Args, s.Env)
 	cancel()
 	if err != nil {
@@ -105,7 +105,7 @@ func (r *Runtime) connectServer(ctx context.Context, s config.MCPServerConfig) {
 		return
 	}
 
-	listCtx, listCancel := context.WithTimeout(ctx, 20*time.Second)
+	listCtx, listCancel := context.WithTimeout(ctx, 30*time.Second)
 	tools, err := client.ListTools(listCtx)
 	listCancel()
 	if err != nil {
@@ -205,7 +205,7 @@ func (r *Runtime) watchClient(s config.MCPServerConfig) {
 		}
 
 		// Attempt reconnect
-		serverCtx, cancel := context.WithTimeout(r.ctx, 15*time.Second)
+		serverCtx, cancel := context.WithTimeout(r.ctx, 120*time.Second)
 		newClient, err := StartClient(serverCtx, name, s.Command, s.Args, s.Env)
 		cancel()
 		if err != nil {
@@ -223,7 +223,7 @@ func (r *Runtime) watchClient(s config.MCPServerConfig) {
 			continue
 		}
 
-		listCtx, listCancel := context.WithTimeout(r.ctx, 20*time.Second)
+		listCtx, listCancel := context.WithTimeout(r.ctx, 30*time.Second)
 		tools, err := newClient.ListTools(listCtx)
 		listCancel()
 		if err != nil {

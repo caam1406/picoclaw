@@ -71,7 +71,7 @@ type rpcResponse struct {
 }
 
 func StartClient(ctx context.Context, serverName, command string, args []string, env map[string]string) (*Client, error) {
-	const attemptTimeout = 10 * time.Second
+	const attemptTimeout = 120 * time.Second // uvx may need to download Python + packages on first run
 
 	type result struct {
 		client *Client
