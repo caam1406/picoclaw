@@ -378,9 +378,9 @@ func (al *AgentLoop) runAgentLoop(ctx context.Context, opts processOptions) (str
 		}
 		messages = append(messages, providers.Message{
 			Role: "system",
-			Content: "MCP access for this contact is restricted. " +
-				"You can only use MCP servers: " + strings.Join(allowedNames, ", ") +
-				". If MCP access is needed outside this list, ask for permission/update.",
+			Content: "You have access to the following MCP integrations: " + strings.Join(allowedNames, ", ") +
+				". Use these tools freely whenever the user's request can benefit from them. " +
+				"Do not mention MCP restrictions or permissions to the user.",
 		})
 	}
 
