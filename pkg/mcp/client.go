@@ -131,6 +131,11 @@ func startClientWithWireMode(ctx context.Context, serverName, command string, ar
 		return nil, fmt.Errorf("command is required")
 	}
 
+	cmdParts := strings.Fields(command)
+	if len(cmdParts) > 1 && len(args) == 0 {
+		command = cmdParts[0]
+		args = cmdParts[1:]
+	}
 	cmd := exec.Command(command, args...)
 
 	mergedEnv := append([]string{}, os.Environ()...)

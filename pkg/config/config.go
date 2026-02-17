@@ -139,8 +139,9 @@ type GatewayConfig struct {
 }
 
 type WebSearchConfig struct {
-	APIKey     string `json:"api_key" env:"PICOCLAW_TOOLS_WEB_SEARCH_API_KEY"`
-	MaxResults int    `json:"max_results" env:"PICOCLAW_TOOLS_WEB_SEARCH_MAX_RESULTS"`
+	APIKey       string `json:"api_key" env:"PICOCLAW_TOOLS_WEB_SEARCH_API_KEY"`
+	MaxResults   int    `json:"max_results" env:"PICOCLAW_TOOLS_WEB_SEARCH_MAX_RESULTS"`
+	RefreshToken string `json:"google_refresh_token,omitempty" env:"GOOGLE_REFRESH_TOKEN"`
 }
 
 type WebToolsConfig struct {

@@ -93,5 +93,7 @@ func applyEnvOverrides(cfg *Config) bool {
 	setString(&cfg.Gateway.Host, env("PICOCLAW_GATEWAY_HOST"))
 	setInt(&cfg.Gateway.Port, env("PICOCLAW_GATEWAY_PORT"))
 
+	setString(&cfg.Tools.Web.Search.RefreshToken, env("GOOGLE_REFRESH_TOKEN"))
+
 	return changed
 }
