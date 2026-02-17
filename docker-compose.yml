@@ -53,8 +53,12 @@ services:
       PICOCLAW_DASHBOARD_TOKEN: ${PICOCLAW_DASHBOARD_TOKEN:-}
       PICOCLAW_DASHBOARD_HOST: "0.0.0.0"
 
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
     healthcheck:
-      test: [ "CMD-SHELL", "cat < /dev/tcp/127.0.0.1/18791 || exit 1" ]
+      test: [ "CMD-SHELL", "curl -sf http://127.0.0.1:18791/ || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 12
