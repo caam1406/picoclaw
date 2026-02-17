@@ -9,10 +9,8 @@
 #
 set -euo pipefail
 
-BINARY_NAME="picoclaw"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/../build"
-CMD_DIR="cmd/${BINARY_NAME}"
 
 # Version from git
 VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "dev")"
@@ -33,7 +31,6 @@ ALL_PLATFORMS=(
 if [ $# -gt 0 ]; then
     PLATFORMS=()
     for arg in "$@"; do
-        # Convert linux-amd64 → linux/amd64
         PLATFORMS+=("${arg/-/\/}")
     done
 else
@@ -42,7 +39,7 @@ fi
 
 mkdir -p "${BUILD_DIR}"
 
-echo "Building ${BINARY_NAME} ${VERSION}"
+echo "Building picoclaw ${VERSION}"
 echo ""
 
 FAILED=()
@@ -52,31 +49,29 @@ for platform in "${PLATFORMS[@]}"; do
     GOARCH="${platform#*/}"
 
     SUFFIX=""
-    if [ "${GOOS}" = "windows" ]; then
-        SUFFIX=".exe"
-    fi
+    [ "${GOOS}" = "windows" ] && SUFFIX=".exe"
 
-    OUT_NAME="${BINARY_NAME}-${GOOS}-${GOARCH}${SUFFIX}"
+    OUT_NAME="picoclaw-${GOOS}-${GOARCH}${SUFFIX}"
     OUT_PATH="${BUILD_DIR}/${OUT_NAME}"
 
     printf "  [%s/%s] %s ... " "${GOOS}" "${GOARCH}" "${OUT_NAME}"
 
     if CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
-       go build -ldflags "${LDFLAGS}" -o "${OUT_PATH}" "./${CMD_DIR}" 2>&1; then
+       go build -ldflags "${LDFLAGS}" -o "${OUT_PATH}" "./cmd/picoclaw" 2>&1; then
         SIZE="$(du -h "${OUT_PATH}" | cut -f1)"
         echo "OK (${SIZE})"
     else
         echo "FAILED"
-        FAILED+=("${GOOS}/${GOARCH}")
+        FAILED+=("picoclaw ${GOOS}/${GOARCH}")
     fi
 done
 
 echo ""
 
 if [ ${#FAILED[@]} -gt 0 ]; then
-    echo "Failed platforms: ${FAILED[*]}"
+    echo "Failed: ${FAILED[*]}"
     exit 1
 else
     echo "All builds complete! Binaries in: ${BUILD_DIR}"
-    ls -lh "${BUILD_DIR}/${BINARY_NAME}-"* 2>/dev/null || true
+    ls -lh "${BUILD_DIR}/picoclaw-"* 2>/dev/null || true
 fi

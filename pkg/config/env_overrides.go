@@ -93,11 +93,5 @@ func applyEnvOverrides(cfg *Config) bool {
 	setString(&cfg.Gateway.Host, env("PICOCLAW_GATEWAY_HOST"))
 	setInt(&cfg.Gateway.Port, env("PICOCLAW_GATEWAY_PORT"))
 
-	// GoGCLI tool configuration
-	setBool(&cfg.Tools.GoGCLI.Enabled, env("PICOCLAW_TOOLS_GOGCLI_ENABLED"))
-	setString(&cfg.Tools.GoGCLI.Binary, env("PICOCLAW_TOOLS_GOGCLI_BINARY"))
-	setString(&cfg.Tools.GoGCLI.DefaultAccount, env("PICOCLAW_TOOLS_GOGCLI_DEFAULT_ACCOUNT", "GOG_ACCOUNT"))
-	setInt(&cfg.Tools.GoGCLI.TimeoutSeconds, env("PICOCLAW_TOOLS_GOGCLI_TIMEOUT_SECONDS"))
-
 	return changed
 }

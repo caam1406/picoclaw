@@ -148,15 +148,7 @@ type WebToolsConfig struct {
 }
 
 type ToolsConfig struct {
-	Web    WebToolsConfig `json:"web"`
-	GoGCLI GoGCLIConfig   `json:"gogcli"`
-}
-
-type GoGCLIConfig struct {
-	Enabled        bool   `json:"enabled" env:"PICOCLAW_TOOLS_GOGCLI_ENABLED"`
-	Binary         string `json:"binary,omitempty" env:"PICOCLAW_TOOLS_GOGCLI_BINARY"`
-	DefaultAccount string `json:"default_account,omitempty" env:"PICOCLAW_TOOLS_GOGCLI_DEFAULT_ACCOUNT"`
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty" env:"PICOCLAW_TOOLS_GOGCLI_TIMEOUT_SECONDS"`
+	Web WebToolsConfig `json:"web"`
 }
 
 type StorageConfig struct {
@@ -243,12 +235,6 @@ func DefaultConfig() *Config {
 					APIKey:     "",
 					MaxResults: 5,
 				},
-			},
-			GoGCLI: GoGCLIConfig{
-				Enabled:        false,
-				Binary:         "",
-				DefaultAccount: "",
-				TimeoutSeconds: 90,
 			},
 		},
 		Dashboard: DashboardConfig{

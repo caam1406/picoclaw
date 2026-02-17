@@ -3,8 +3,8 @@
     Cross-compile picoclaw for all supported platforms.
 
 .DESCRIPTION
-    Builds picoclaw binaries for Linux (amd64, arm64), Windows (amd64),
-    and macOS (amd64, arm64). Outputs to the build/ directory.
+    Builds picoclaw binaries for Linux (amd64, arm64),
+    Windows (amd64), and macOS (amd64, arm64). Outputs to the build/ directory.
 
 .PARAMETER Platforms
     Comma-separated list of platforms to build. Default: all.
@@ -17,9 +17,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$BinaryName = "picoclaw"
 $BuildDir = Join-Path (Join-Path $PSScriptRoot "..") "build"
-$CmdDir = "cmd/$BinaryName"
 
 # Version from git
 $Version = & git describe --tags --always --dirty 2>$null
@@ -28,7 +26,7 @@ $BuildTime = Get-Date -Format "yyyy-MM-ddTHH:mm:sszzz"
 
 $LdFlags = "-X main.version=$Version -X main.buildTime=$BuildTime"
 
-# Platform definitions: GOOS, GOARCH, suffix
+# Platform definitions
 $AllPlatforms = @(
     @{ GOOS = "linux"; GOARCH = "amd64"; Suffix = "" },
     @{ GOOS = "linux"; GOARCH = "arm64"; Suffix = "" },
@@ -54,13 +52,13 @@ if (-not (Test-Path $BuildDir)) {
     New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
 }
 
-Write-Host "Building $BinaryName $Version" -ForegroundColor Cyan
+Write-Host "Building picoclaw $Version" -ForegroundColor Cyan
 Write-Host ""
 
 $failed = @()
 
 foreach ($p in $AllPlatforms) {
-    $outName = "$BinaryName-$($p.GOOS)-$($p.GOARCH)$($p.Suffix)"
+    $outName = "picoclaw-$($p.GOOS)-$($p.GOARCH)$($p.Suffix)"
     $outPath = Join-Path $BuildDir $outName
 
     Write-Host "  [$($p.GOOS)/$($p.GOARCH)] " -NoNewline -ForegroundColor Yellow
@@ -71,7 +69,7 @@ foreach ($p in $AllPlatforms) {
     $env:CGO_ENABLED = "0"
 
     try {
-        & go build -ldflags $LdFlags -o $outPath "./$CmdDir" 2>&1
+        & go build -ldflags $LdFlags -o $outPath "./cmd/picoclaw" 2>&1
         if ($LASTEXITCODE -ne 0) { throw "go build exited with code $LASTEXITCODE" }
         $size = [math]::Round((Get-Item $outPath).Length / 1MB, 1)
         Write-Host "OK (${size} MB)" -ForegroundColor Green
@@ -79,11 +77,11 @@ foreach ($p in $AllPlatforms) {
     catch {
         Write-Host "FAILED" -ForegroundColor Red
         Write-Host "    $_" -ForegroundColor Red
-        $failed += "$($p.GOOS)/$($p.GOARCH)"
+        $failed += "picoclaw $($p.GOOS)/$($p.GOARCH)"
     }
     finally {
-        Remove-Item Env:\GOOS   -ErrorAction SilentlyContinue
-        Remove-Item Env:\GOARCH -ErrorAction SilentlyContinue
+        Remove-Item Env:\GOOS        -ErrorAction SilentlyContinue
+        Remove-Item Env:\GOARCH      -ErrorAction SilentlyContinue
         Remove-Item Env:\CGO_ENABLED -ErrorAction SilentlyContinue
     }
 }
@@ -91,12 +89,12 @@ foreach ($p in $AllPlatforms) {
 Write-Host ""
 
 if ($failed.Count -gt 0) {
-    Write-Host "Failed platforms: $($failed -join ', ')" -ForegroundColor Red
+    Write-Host "Failed: $($failed -join ', ')" -ForegroundColor Red
     exit 1
 }
 else {
     Write-Host "All builds complete! Binaries in: $BuildDir" -ForegroundColor Green
-    Get-ChildItem $BuildDir -Filter "$BinaryName-*" | ForEach-Object {
+    Get-ChildItem $BuildDir -Filter "picoclaw-*" | ForEach-Object {
         $size = [math]::Round($_.Length / 1MB, 1)
         Write-Host "  $($_.Name)  (${size} MB)" -ForegroundColor Gray
     }
