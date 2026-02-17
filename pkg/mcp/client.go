@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,6 +124,63 @@ func StartClient(ctx context.Context, serverName, command string, args []string,
 	return nil, fmt.Errorf("all wire modes failed for %q: %w", serverName, firstErr)
 }
 
+// fixUvxArgs ensures that uvx (uv tool run) commands use the explicit
+// "--from <package>" syntax required by uv 0.10+. Without it, package names
+// containing hyphens (e.g. "workspace-mcp") are misinterpreted as PEP 508
+// requirement specifiers, causing "Failed to parse" errors.
+//
+// Example: ["workspace-mcp", "--transport", "streamable-http"]
+// becomes: ["--from", "workspace-mcp", "workspace-mcp", "--transport", "streamable-http"]
+func fixUvxArgs(command string, args []string) []string {
+	base := filepath.Base(command)
+	if base != "uvx" && base != "uvx.exe" {
+		return args
+	}
+	if len(args) == 0 {
+		return args
+	}
+
+	// Check if --from is already present
+	for _, a := range args {
+		if a == "--from" {
+			return args
+		}
+	}
+
+	// The first non-flag argument is the package/tool name.
+	// Find it (skip any leading flags like --quiet, --python, etc.).
+	pkgIdx := -1
+	for i, a := range args {
+		if strings.HasPrefix(a, "-") {
+			// If this flag takes a value, skip the next arg too.
+			if a == "--python" || a == "--with" || a == "--index" {
+				i++ // the loop will also increment, effectively skipping next
+			}
+			continue
+		}
+		pkgIdx = i
+		break
+	}
+
+	if pkgIdx < 0 {
+		return args
+	}
+
+	pkgName := args[pkgIdx]
+	// Only inject --from for names that look like Python packages (contain hyphen or alphanumeric).
+	// Skip if it looks like a path (contains / or \).
+	if strings.ContainsAny(pkgName, "/\\") {
+		return args
+	}
+
+	// Build new args: [flags before pkg...] + ["--from", pkg, pkg] + [flags after pkg...]
+	fixed := make([]string, 0, len(args)+2)
+	fixed = append(fixed, args[:pkgIdx]...)
+	fixed = append(fixed, "--from", pkgName)
+	fixed = append(fixed, args[pkgIdx:]...)
+	return fixed
+}
+
 func startClientWithWireMode(ctx context.Context, serverName, command string, args []string, env map[string]string, mode wireMode) (*Client, error) {
 	if strings.TrimSpace(serverName) == "" {
 		return nil, fmt.Errorf("serverName is required")
@@ -136,6 +194,13 @@ func startClientWithWireMode(ctx context.Context, serverName, command string, ar
 		command = cmdParts[0]
 		args = cmdParts[1:]
 	}
+
+	// uv 0.10+ requires explicit --from for uvx/uv-tool-run to avoid
+	// requirement-specifier parse errors with package names that contain
+	// hyphens (e.g. "workspace-mcp"). Inject "--from <pkg> <pkg>" when
+	// the first arg looks like a package name and --from is not already present.
+	args = fixUvxArgs(command, args)
+
 	cmd := exec.Command(command, args...)
 
 	mergedEnv := append([]string{}, os.Environ()...)
