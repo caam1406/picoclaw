@@ -106,6 +106,12 @@
         "api_key": "YOUR_BRAVE_API_KEY",
         "max_results": 5
       }
+    },
+    "gogcli": {
+      "enabled": false,
+      "binary": "",
+      "default_account": "",
+      "timeout_seconds": 90
     }
   },
   "gateway": {

@@ -8,15 +8,22 @@ import (
 	"github.com/sipeed/picoclaw/pkg/mcp"
 )
 
+// ClientResolver looks up the current live MCP client for a server.
+// This allows MCPTool to survive server reconnections without holding a stale pointer.
+type ClientResolver interface {
+	Client(serverName string) (*mcp.Client, bool)
+}
+
 type MCPTool struct {
 	localName      string
+	serverName     string
 	description    string
 	parameters     map[string]interface{}
-	client         *mcp.Client
+	resolver       ClientResolver
 	remoteToolName string
 }
 
-func NewMCPTool(serverName string, remote mcp.RemoteTool, client *mcp.Client) *MCPTool {
+func NewMCPTool(serverName string, remote mcp.RemoteTool, resolver ClientResolver) *MCPTool {
 	local := fmt.Sprintf("mcp.%s.%s", sanitizeToolToken(serverName), sanitizeToolToken(remote.Name))
 	desc := strings.TrimSpace(remote.Description)
 	if desc == "" {
@@ -31,9 +38,10 @@ func NewMCPTool(serverName string, remote mcp.RemoteTool, client *mcp.Client) *M
 	}
 	return &MCPTool{
 		localName:      local,
+		serverName:     serverName,
 		description:    desc,
 		parameters:     params,
-		client:         client,
+		resolver:       resolver,
 		remoteToolName: remote.Name,
 	}
 }
@@ -51,14 +59,14 @@ func (t *MCPTool) Parameters() map[string]interface{} {
 }
 
 func (t *MCPTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
-	if t.client == nil {
-		return "", fmt.Errorf("mcp client is not initialized")
+	if t.resolver == nil {
+		return "", fmt.Errorf("mcp client resolver is not initialized")
 	}
-	result, err := t.client.CallTool(ctx, t.remoteToolName, args)
-	if err != nil {
-		return result, err
+	client, ok := t.resolver.Client(t.serverName)
+	if !ok || client == nil {
+		return "", fmt.Errorf("mcp server %q is not connected", t.serverName)
 	}
-	return result, nil
+	return client.CallTool(ctx, t.remoteToolName, args)
 }
 
 func sanitizeToolToken(v string) string {

@@ -71,29 +71,56 @@ type rpcResponse struct {
 }
 
 func StartClient(ctx context.Context, serverName, command string, args []string, env map[string]string) (*Client, error) {
-	const attemptTimeout = 8 * time.Second
+	const attemptTimeout = 10 * time.Second
 
-	// First try MCP stdio framing with Content-Length (spec/LSP style).
-	lspCtx, lspCancel := context.WithTimeout(ctx, attemptTimeout)
-	client, err := startClientWithWireMode(lspCtx, serverName, command, args, env, wireModeLSP)
-	lspCancel()
-	if err == nil {
-		return client, nil
+	type result struct {
+		client *Client
+		mode   wireMode
+		err    error
 	}
 
-	// Fallback for MCP servers that speak newline-delimited JSON over stdio.
-	logger.WarnCF("mcp", "MCP stdio fallback: retrying with JSON-line transport", map[string]interface{}{
-		"server": serverName,
-		"error":  err.Error(),
-	})
-	fallbackCtx, fallbackCancel := context.WithTimeout(ctx, attemptTimeout)
-	clientFallback, fallbackErr := startClientWithWireMode(fallbackCtx, serverName, command, args, env, wireModeJSONLine)
-	fallbackCancel()
-	if fallbackErr == nil {
-		return clientFallback, nil
+	raceCtx, raceCancel := context.WithTimeout(ctx, attemptTimeout)
+	defer raceCancel()
+
+	ch := make(chan result, 2)
+
+	// Try both wire modes concurrently; the first to succeed wins.
+	for _, mode := range []wireMode{wireModeLSP, wireModeJSONLine} {
+		go func(m wireMode) {
+			c, err := startClientWithWireMode(raceCtx, serverName, command, args, env, m)
+			ch <- result{client: c, mode: m, err: err}
+		}(mode)
 	}
 
-	return nil, fmt.Errorf("%w (fallback json-line failed: %v)", err, fallbackErr)
+	var firstErr error
+	for i := 0; i < 2; i++ {
+		r := <-ch
+		if r.err == nil {
+			raceCancel() // signal the other goroutine to stop
+			// Drain and close the losing attempt if it arrives later.
+			go func() {
+				for j := i + 1; j < 2; j++ {
+					if loser := <-ch; loser.err == nil && loser.client != nil {
+						loser.client.Close()
+					}
+				}
+			}()
+			modeName := "LSP"
+			if r.mode == wireModeJSONLine {
+				modeName = "JSON-line"
+			}
+			logger.InfoCF("mcp", "MCP client connected", map[string]interface{}{
+				"server":    serverName,
+				"wire_mode": modeName,
+			})
+			return r.client, nil
+		}
+		if firstErr == nil {
+			firstErr = r.err
+		}
+	}
+
+	return nil, fmt.Errorf("all wire modes failed for %q: %w", serverName, firstErr)
 }
 
 func startClientWithWireMode(ctx context.Context, serverName, command string, args []string, env map[string]string, mode wireMode) (*Client, error) {

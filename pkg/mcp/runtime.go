@@ -11,6 +11,11 @@ import (
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
+// ensure Runtime satisfies the ClientResolver interface used by MCPTool
+var _ interface {
+	Client(string) (*Client, bool)
+} = (*Runtime)(nil)
+
 type Runtime struct {
 	agentID string
 	servers []config.MCPServerConfig
@@ -48,6 +53,7 @@ func NewRuntime(agentID string, servers []config.MCPServerConfig) *Runtime {
 func (r *Runtime) Start(ctx context.Context) {
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
+	var wg sync.WaitGroup
 	for _, s := range r.servers {
 		name := strings.TrimSpace(s.Name)
 		if name == "" {
@@ -66,8 +72,13 @@ func (r *Runtime) Start(ctx context.Context) {
 			continue
 		}
 
-		r.connectServer(r.ctx, s)
+		wg.Add(1)
+		go func(srv config.MCPServerConfig) {
+			defer wg.Done()
+			r.connectServer(r.ctx, srv)
+		}(s)
 	}
+	wg.Wait()
 }
 
 // connectServer attempts to start a single MCP server and list its tools.

@@ -82,9 +82,12 @@ func NewAgentLoopForAgent(cfg *config.Config, msgBus *bus.MessageBus, provider p
 	braveAPIKey := cfg.Tools.Web.Search.APIKey
 	toolsRegistry.Register(tools.NewWebSearchTool(braveAPIKey, cfg.Tools.Web.Search.MaxResults))
 	toolsRegistry.Register(tools.NewWebFetchTool(50000))
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("PICOCLAW_TOOLS_GOGCLI_ENABLED")), "true") ||
-		strings.TrimSpace(os.Getenv("PICOCLAW_TOOLS_GOGCLI_ENABLED")) == "1" {
-		toolsRegistry.Register(tools.NewGoGCLITool())
+	if cfg.Tools.GoGCLI.Enabled {
+		toolsRegistry.Register(tools.NewGoGCLIToolWithConfig(tools.GoGCLIConfig{
+			Binary:         cfg.Tools.GoGCLI.Binary,
+			DefaultAccount: cfg.Tools.GoGCLI.DefaultAccount,
+			TimeoutSeconds: cfg.Tools.GoGCLI.TimeoutSeconds,
+		}))
 	}
 
 	// Register message tool
@@ -112,11 +115,7 @@ func NewAgentLoopForAgent(cfg *config.Config, msgBus *bus.MessageBus, provider p
 	mcpRuntime.Start(context.Background())
 	mcpToolsCount := 0
 	for _, remote := range mcpRuntime.Tools() {
-		client, ok := mcpRuntime.Client(remote.ServerName)
-		if !ok || client == nil {
-			continue
-		}
-		tool := tools.NewMCPTool(remote.ServerName, remote, client)
+		tool := tools.NewMCPTool(remote.ServerName, remote, mcpRuntime)
 		if _, exists := toolsRegistry.Get(tool.Name()); exists {
 			logger.WarnCF("mcp", "Skipping duplicated MCP tool name", map[string]interface{}{
 				"agent_id": resolved.AgentID,
@@ -473,8 +472,12 @@ func (al *AgentLoop) publishOutboundWithContactDelay(ctx context.Context, msg bu
 func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.Message, opts processOptions, mcpPolicy sessionMCPPolicy) (string, int, error) {
 	iteration := 0
 	var finalContent string
+
+	// Resolve config once at the start of the iteration loop.
 	currentModel := al.model
 	currentMaxIterations := al.maxIterations
+	currentMaxTokens := al.contextWindow
+	currentTemperature := 0.7
 	if al.cfg != nil {
 		resolved := al.cfg.ResolveAgentConfig(al.AgentID())
 		if strings.TrimSpace(resolved.Settings.Model) != "" {
@@ -483,6 +486,26 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		if resolved.Settings.MaxToolIterations > 0 {
 			currentMaxIterations = resolved.Settings.MaxToolIterations
 		}
+		if resolved.Settings.MaxTokens > 0 {
+			currentMaxTokens = resolved.Settings.MaxTokens
+		}
+		if resolved.Settings.Temperature > 0 {
+			currentTemperature = resolved.Settings.Temperature
+		}
+	}
+
+	// Build tool definitions once (tools don't change during a message).
+	toolDefs := al.getToolDefinitionsForPolicy(mcpPolicy)
+	providerToolDefs := make([]providers.ToolDefinition, 0, len(toolDefs))
+	for _, td := range toolDefs {
+		providerToolDefs = append(providerToolDefs, providers.ToolDefinition{
+			Type: td["type"].(string),
+			Function: providers.ToolFunctionDefinition{
+				Name:        td["function"].(map[string]interface{})["name"].(string),
+				Description: td["function"].(map[string]interface{})["description"].(string),
+				Parameters:  td["function"].(map[string]interface{})["parameters"].(map[string]interface{}),
+			},
+		})
 	}
 
 	for iteration < currentMaxIterations {
@@ -494,44 +517,32 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				"max":       currentMaxIterations,
 			})
 
-		// Build tool definitions
-		toolDefs := al.getToolDefinitionsForPolicy(mcpPolicy)
-		providerToolDefs := make([]providers.ToolDefinition, 0, len(toolDefs))
-		for _, td := range toolDefs {
-			providerToolDefs = append(providerToolDefs, providers.ToolDefinition{
-				Type: td["type"].(string),
-				Function: providers.ToolFunctionDefinition{
-					Name:        td["function"].(map[string]interface{})["name"].(string),
-					Description: td["function"].(map[string]interface{})["description"].(string),
-					Parameters:  td["function"].(map[string]interface{})["parameters"].(map[string]interface{}),
-				},
-			})
+		// Log LLM request details (only when debug is enabled to avoid allocations)
+		if logger.IsDebug() {
+			logger.DebugCF("agent", "LLM request",
+				map[string]interface{}{
+					"iteration":         iteration,
+					"model":             currentModel,
+					"messages_count":    len(messages),
+					"tools_count":       len(providerToolDefs),
+					"max_tokens":        currentMaxTokens,
+					"temperature":       currentTemperature,
+					"system_prompt_len": len(messages[0].Content),
+				})
+
+			// Log full messages (detailed) — guarded to avoid expensive formatting
+			logger.DebugCF("agent", "Full LLM request",
+				map[string]interface{}{
+					"iteration":     iteration,
+					"messages_json": formatMessagesForLog(messages),
+					"tools_json":    formatToolsForLog(providerToolDefs),
+				})
 		}
-
-		// Log LLM request details
-		logger.DebugCF("agent", "LLM request",
-			map[string]interface{}{
-				"iteration":         iteration,
-				"model":             currentModel,
-				"messages_count":    len(messages),
-				"tools_count":       len(providerToolDefs),
-				"max_tokens":        8192,
-				"temperature":       0.7,
-				"system_prompt_len": len(messages[0].Content),
-			})
-
-		// Log full messages (detailed)
-		logger.DebugCF("agent", "Full LLM request",
-			map[string]interface{}{
-				"iteration":     iteration,
-				"messages_json": formatMessagesForLog(messages),
-				"tools_json":    formatToolsForLog(providerToolDefs),
-			})
 
 		// Call LLM
 		response, err := al.provider.Chat(ctx, messages, providerToolDefs, currentModel, map[string]interface{}{
-			"max_tokens":  8192,
-			"temperature": 0.7,
+			"max_tokens":  currentMaxTokens,
+			"temperature": currentTemperature,
 		})
 
 		if err != nil {
