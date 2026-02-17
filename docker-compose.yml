@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   init-secrets:
     image: alpine:3.20
@@ -29,17 +31,22 @@ services:
     image: golang:1.24-bookworm
     pull_policy: always
     container_name: picoclaw-gateway
+
     depends_on:
       init-secrets:
         condition: service_completed_successfully
+
     ports:
       - "${PICOCLAW_GATEWAY_PORT:-18790}:18790"
       - "${PICOCLAW_DASHBOARD_PORT:-18791}:18791"
+
     working_dir: /opt
+
     volumes:
       - picoclaw_data:/root/.picoclaw
       - picoclaw_src:/opt/picoclaw
       - picoclaw_secrets:/run/picoclaw-secrets:ro
+
     environment:
       TZ: ${TZ:-UTC}
       REPO_URL: ${REPO_URL:-https://github.com/caam1406/picoclaw.git}
@@ -55,12 +62,14 @@ services:
       PICOCLAW_STORAGE_FILE_PATH: ${PICOCLAW_STORAGE_FILE_PATH:-~/.picoclaw/workspace/sessions}
       PICOCLAW_DASHBOARD_TOKEN: ${PICOCLAW_DASHBOARD_TOKEN:-}
       PICOCLAW_DASHBOARD_HOST: "0.0.0.0"
+
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:18791/ >/dev/null || exit 1"]
+      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:18791/ >/dev/null || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 12
       start_period: 40s
+
     command:
       - /bin/bash
       - -lc
@@ -85,66 +94,64 @@ services:
         fi
 
         cd /opt/picoclaw
-        GO_BIN="$(command -v go || true)"
+
+        GO_BIN="$$(command -v go || true)"
         if [ -z "$${GO_BIN}" ] && [ -x /usr/local/go/bin/go ]; then
           GO_BIN="/usr/local/go/bin/go"
         fi
+
         if [ -z "$${GO_BIN}" ]; then
-          echo "[picoclaw-gateway] ERROR: Go binary not found. Current PATH=$${PATH}"
-          ls -la /usr/local/go/bin || true
+          echo "[picoclaw-gateway] ERROR: Go binary not found"
           exit 1
         fi
+
         echo "[picoclaw-gateway] using go binary: $${GO_BIN}"
 
         export PATH="$${HOME}/go/bin:$${HOME}/.local/bin:$${PATH}"
+
         if ! command -v uvx >/dev/null 2>&1; then
-          echo "[picoclaw-gateway] installing uv/uvx runtime..."
+          echo "[picoclaw-gateway] installing uv runtime..."
           apt-get update
-          apt-get install -y --no-install-recommends curl ca-certificates
+          apt-get install -y --no-install-recommends curl ca-certificates git
           rm -rf /var/lib/apt/lists/*
           curl -LsSf https://astral.sh/uv/install.sh | sh
           export PATH="$${HOME}/.local/bin:$${PATH}"
         fi
-        if command -v uvx >/dev/null 2>&1; then
-          echo "[picoclaw-gateway] uvx detected: $$(command -v uvx)"
-        else
-          echo "[picoclaw-gateway] WARNING: uvx installation failed; MCPs that use uvx may fail."
-        fi
 
         if [ "$${PICOCLAW_TOOLS_GOGCLI_ENABLED:-false}" = "true" ] || [ "$${PICOCLAW_TOOLS_GOGCLI_ENABLED:-0}" = "1" ]; then
           if ! command -v gog >/dev/null 2>&1 && ! command -v gogcli >/dev/null 2>&1; then
-            echo "[picoclaw-gateway] installing gog runtime..."
+            echo "[picoclaw-gateway] installing gogcli..."
             "$${GO_BIN}" install github.com/steipete/gogcli/cmd/gog@latest
-            export PATH="$${HOME}/go/bin:$${HOME}/.local/bin:$${PATH}"
-          fi
-          if command -v gog >/dev/null 2>&1; then
-            echo "[picoclaw-gateway] gog detected: $$(command -v gog)"
-          elif command -v gogcli >/dev/null 2>&1; then
-            echo "[picoclaw-gateway] gogcli detected: $$(command -v gogcli)"
-          else
-            echo "[picoclaw-gateway] WARNING: gog installation failed; gog tool may fail."
+            export PATH="$${HOME}/go/bin:$${PATH}"
           fi
 
           GOG_BIN="$$(command -v gog || command -v gogcli || true)"
-          if [ -n "$${GOG_BIN}" ] && [ -n "$${GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ -n "$${GOOGLE_OAUTH_CLIENT_SECRET:-}" ]; then
-            echo "[picoclaw-gateway] configuring gog OAuth client credentials..."
+
+          if [ -n "$${GOG_BIN}" ] && \
+             [ -n "$${GOOGLE_OAUTH_CLIENT_ID:-}" ] && \
+             [ -n "$${GOOGLE_OAUTH_CLIENT_SECRET:-}" ]; then
+
+            echo "[picoclaw-gateway] configuring gog OAuth..."
+
             mkdir -p /root/.config/gog
-            cat >/root/.config/gog/oauth_client.json <<EOF
-{"installed":{"client_id":"$${GOOGLE_OAUTH_CLIENT_ID}","project_id":"picoclaw-gog","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"$${GOOGLE_OAUTH_CLIENT_SECRET}","redirect_uris":["http://127.0.0.1","http://localhost"]}}
-EOF
+
+            printf '%s\n' \
+              '{"installed":{"client_id":"'"$${GOOGLE_OAUTH_CLIENT_ID}"'","project_id":"picoclaw-gog","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"'"$${GOOGLE_OAUTH_CLIENT_SECRET}"'","redirect_uris":["http://127.0.0.1","http://localhost"]}}' \
+              > /root/.config/gog/oauth_client.json
+
             "$${GOG_BIN}" auth credentials /root/.config/gog/oauth_client.json || true
           fi
-        else
-          echo "[picoclaw-gateway] gogcli tool disabled (PICOCLAW_TOOLS_GOGCLI_ENABLED=false)."
         fi
 
         echo "[picoclaw-gateway] downloading go modules..."
         "$${GO_BIN}" mod download
+
         echo "[picoclaw-gateway] building binary..."
         "$${GO_BIN}" build -o /usr/local/bin/picoclaw ./cmd/picoclaw
 
-        echo "[picoclaw-gateway] starting gateway and dashboard..."
+        echo "[picoclaw-gateway] starting gateway..."
         exec /usr/local/bin/picoclaw gateway --debug
+
     restart: unless-stopped
 
 volumes:
