@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   init-secrets:
     image: alpine:3.20
@@ -39,8 +37,6 @@ services:
       - "${PICOCLAW_GATEWAY_PORT:-18790}:18790"
       - "${PICOCLAW_DASHBOARD_PORT:-18791}:18791"
 
-    working_dir: /opt
-
     volumes:
       - picoclaw_data:/root/.picoclaw
       - picoclaw_src:/opt/picoclaw
@@ -52,9 +48,6 @@ services:
       REPO_BRANCH: ${REPO_BRANCH:-main}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       PICOCLAW_PROVIDERS_OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
-      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
-      OAUTHLIB_INSECURE_TRANSPORT: ${OAUTHLIB_INSECURE_TRANSPORT:-1}
       GOG_ACCOUNT: ${GOG_ACCOUNT:-}
       PICOCLAW_TOOLS_GOGCLI_ENABLED: ${PICOCLAW_TOOLS_GOGCLI_ENABLED:-false}
       PICOCLAW_STORAGE_TYPE: ${PICOCLAW_STORAGE_TYPE:-file}
@@ -63,17 +56,17 @@ services:
       PICOCLAW_DASHBOARD_HOST: "0.0.0.0"
 
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:18791/ >/dev/null || exit 1" ]
+      test: [ "CMD-SHELL", "cat < /dev/tcp/127.0.0.1/18791 || exit 1" ]
       interval: 15s
       timeout: 5s
       retries: 12
       start_period: 40s
 
     command:
-      - /bin/bash
-      - -lc
+      - /bin/sh
+      - -c
       - |
-        set -euo pipefail
+        set -eu
         echo "[picoclaw-gateway] initializing..."
         echo "[picoclaw-gateway] repo=$${REPO_URL} branch=$${REPO_BRANCH}"
 
@@ -82,7 +75,7 @@ services:
           export PICOCLAW_DASHBOARD_TOKEN="$$(cat "$${SECRETS_DIR}/dashboard_token")"
         fi
 
-        # Install minimal dependencies (only on first run, cached in volume)
+        # Install minimal dependencies on first run
         if ! command -v git >/dev/null 2>&1; then
           echo "[picoclaw-gateway] installing dependencies..."
           apt-get update
@@ -102,7 +95,7 @@ services:
 
         cd /opt/picoclaw
 
-        # Detect architecture and copy pre-built binary
+        # Detect architecture and install pre-built binary
         ARCH="$$(dpkg --print-architecture 2>/dev/null || uname -m)"
         case "$${ARCH}" in
           amd64|x86_64) ARCH="amd64" ;;
@@ -120,33 +113,11 @@ services:
         cp "$${BINARY}" /usr/local/bin/picoclaw
         chmod +x /usr/local/bin/picoclaw
 
-        export PATH="$${HOME}/.local/bin:$${PATH}"
-
         # Install uv runtime if not present
         if ! command -v uvx >/dev/null 2>&1; then
           echo "[picoclaw-gateway] installing uv runtime..."
           curl -LsSf https://astral.sh/uv/install.sh | sh
           export PATH="$${HOME}/.local/bin:$${PATH}"
-        fi
-
-        # Configure gogcli if enabled and binary is available
-        if [ "$${PICOCLAW_TOOLS_GOGCLI_ENABLED:-false}" = "true" ] || [ "$${PICOCLAW_TOOLS_GOGCLI_ENABLED:-0}" = "1" ]; then
-          GOG_BIN="$$(command -v gog || command -v gogcli || true)"
-
-          if [ -n "$${GOG_BIN}" ] && \
-             [ -n "$${GOOGLE_OAUTH_CLIENT_ID:-}" ] && \
-             [ -n "$${GOOGLE_OAUTH_CLIENT_SECRET:-}" ]; then
-
-            echo "[picoclaw-gateway] configuring gog OAuth..."
-
-            mkdir -p /root/.config/gog
-
-            printf '%s\n' \
-              '{"installed":{"client_id":"'"$${GOOGLE_OAUTH_CLIENT_ID}"'","project_id":"picoclaw-gog","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_secret":"'"$${GOOGLE_OAUTH_CLIENT_SECRET}"'","redirect_uris":["http://127.0.0.1","http://localhost"]}}' \
-              > /root/.config/gog/oauth_client.json
-
-            "$${GOG_BIN}" auth credentials /root/.config/gog/oauth_client.json || true
-          fi
         fi
 
         echo "[picoclaw-gateway] starting gateway..."
