@@ -27,6 +27,7 @@ services:
 
   picoclaw-gateway:
     image: golang:1.24-bookworm
+    pull_policy: always
     container_name: picoclaw-gateway
     depends_on:
       init-secrets:
