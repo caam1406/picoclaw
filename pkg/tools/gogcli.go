@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const gogMaxOutputChars = 30000
+
 type GoGCLITool struct {
 	timeout time.Duration
 }
@@ -25,7 +27,7 @@ func (t *GoGCLITool) Name() string {
 }
 
 func (t *GoGCLITool) Description() string {
-	return "Run gog/gogcli commands to interact with Google APIs, including remote 2-step auth flows."
+	return "Run gog/gogcli commands to interact with Google APIs (Gmail, Calendar, Drive, etc.). Supports remote 2-step OAuth auth. Provide either 'action' for auth flows or 'args' for direct gog CLI commands (e.g. [\"gmail\",\"search\",\"is:inbox\"])."
 }
 
 func (t *GoGCLITool) Parameters() map[string]interface{} {
@@ -151,7 +153,7 @@ func (t *GoGCLITool) Execute(ctx context.Context, args map[string]interface{}) (
 			if combined == "" {
 				return "", fmt.Errorf("gog command timed out after %v", timeout)
 			}
-			return combined + "\n\n[notice] command is still waiting for interaction (timed out).", nil
+			return truncateGogOutput(combined) + "\n\n[notice] command is still waiting for interaction (timed out).", nil
 		}
 		if errOut != "" {
 			return "", fmt.Errorf("gog command failed: %s", errOut)
@@ -160,12 +162,19 @@ func (t *GoGCLITool) Execute(ctx context.Context, args map[string]interface{}) (
 	}
 
 	if out == "" && errOut != "" {
-		return errOut, nil
+		return truncateGogOutput(errOut), nil
 	}
 	if out == "" {
 		return "(no output)", nil
 	}
-	return out, nil
+	return truncateGogOutput(out), nil
+}
+
+func truncateGogOutput(s string) string {
+	if len(s) <= gogMaxOutputChars {
+		return s
+	}
+	return s[:gogMaxOutputChars] + "\n\n[output truncated]"
 }
 
 func hasAccountArg(argv []string) bool {

@@ -67,6 +67,11 @@ func GetLevel() LogLevel {
 	return currentLevel
 }
 
+// IsDebug returns true when the current log level includes debug messages.
+func IsDebug() bool {
+	return GetLevel() <= DEBUG
+}
+
 func EnableFileLogging(filePath string) error {
 	mu.Lock()
 	defer mu.Unlock()
