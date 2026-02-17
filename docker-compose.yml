@@ -28,8 +28,7 @@ services:
     restart: "no"
 
   picoclaw-gateway:
-    image: golang:1.24-bookworm
-    pull_policy: always
+    image: debian:bookworm-slim
     container_name: picoclaw-gateway
 
     depends_on:
@@ -83,6 +82,14 @@ services:
           export PICOCLAW_DASHBOARD_TOKEN="$$(cat "$${SECRETS_DIR}/dashboard_token")"
         fi
 
+        # Install minimal dependencies (only on first run, cached in volume)
+        if ! command -v git >/dev/null 2>&1; then
+          echo "[picoclaw-gateway] installing dependencies..."
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates git
+          rm -rf /var/lib/apt/lists/*
+        fi
+
         if [ ! -d /opt/picoclaw/.git ]; then
           echo "[picoclaw-gateway] cloning repository..."
           git clone --branch "$${REPO_BRANCH}" "$${REPO_URL}" /opt/picoclaw
@@ -95,36 +102,35 @@ services:
 
         cd /opt/picoclaw
 
-        GO_BIN="$$(command -v go || true)"
-        if [ -z "$${GO_BIN}" ] && [ -x /usr/local/go/bin/go ]; then
-          GO_BIN="/usr/local/go/bin/go"
-        fi
+        # Detect architecture and copy pre-built binary
+        ARCH="$$(dpkg --print-architecture 2>/dev/null || uname -m)"
+        case "$${ARCH}" in
+          amd64|x86_64) ARCH="amd64" ;;
+          arm64|aarch64) ARCH="arm64" ;;
+        esac
 
-        if [ -z "$${GO_BIN}" ]; then
-          echo "[picoclaw-gateway] ERROR: Go binary not found"
+        BINARY="build/picoclaw-linux-$${ARCH}"
+        if [ ! -f "$${BINARY}" ]; then
+          echo "[picoclaw-gateway] ERROR: pre-built binary not found: $${BINARY}"
+          echo "[picoclaw-gateway] Run scripts/build.sh or scripts/build.ps1 to compile"
           exit 1
         fi
 
-        echo "[picoclaw-gateway] using go binary: $${GO_BIN}"
+        echo "[picoclaw-gateway] installing binary: $${BINARY}"
+        cp "$${BINARY}" /usr/local/bin/picoclaw
+        chmod +x /usr/local/bin/picoclaw
 
-        export PATH="$${HOME}/go/bin:$${HOME}/.local/bin:$${PATH}"
+        export PATH="$${HOME}/.local/bin:$${PATH}"
 
+        # Install uv runtime if not present
         if ! command -v uvx >/dev/null 2>&1; then
           echo "[picoclaw-gateway] installing uv runtime..."
-          apt-get update
-          apt-get install -y --no-install-recommends curl ca-certificates git
-          rm -rf /var/lib/apt/lists/*
           curl -LsSf https://astral.sh/uv/install.sh | sh
           export PATH="$${HOME}/.local/bin:$${PATH}"
         fi
 
+        # Configure gogcli if enabled and binary is available
         if [ "$${PICOCLAW_TOOLS_GOGCLI_ENABLED:-false}" = "true" ] || [ "$${PICOCLAW_TOOLS_GOGCLI_ENABLED:-0}" = "1" ]; then
-          if ! command -v gog >/dev/null 2>&1 && ! command -v gogcli >/dev/null 2>&1; then
-            echo "[picoclaw-gateway] installing gogcli..."
-            "$${GO_BIN}" install github.com/steipete/gogcli/cmd/gog@latest
-            export PATH="$${HOME}/go/bin:$${PATH}"
-          fi
-
           GOG_BIN="$$(command -v gog || command -v gogcli || true)"
 
           if [ -n "$${GOG_BIN}" ] && \
@@ -142,12 +148,6 @@ services:
             "$${GOG_BIN}" auth credentials /root/.config/gog/oauth_client.json || true
           fi
         fi
-
-        echo "[picoclaw-gateway] downloading go modules..."
-        "$${GO_BIN}" mod download
-
-        echo "[picoclaw-gateway] building binary..."
-        "$${GO_BIN}" build -o /usr/local/bin/picoclaw ./cmd/picoclaw
 
         echo "[picoclaw-gateway] starting gateway..."
         exec /usr/local/bin/picoclaw gateway --debug

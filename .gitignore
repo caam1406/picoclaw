@@ -13,7 +13,11 @@ bin/
 .picoclaw/
 config.json
 sessions/
-build/
+
+# Allow pre-built binaries in build/
+!build/
+build/*
+!build/picoclaw-*
 
 # Coverage
 coverage.txt
