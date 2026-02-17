@@ -12,13 +12,34 @@ import (
 
 const gogMaxOutputChars = 30000
 
+// GoGCLIConfig holds the configuration for the GoGCLI tool.
+// It mirrors config.GoGCLIConfig but avoids importing the config package
+// to keep the tools package free of circular dependencies.
+type GoGCLIConfig struct {
+	Binary         string // Override binary name (empty = auto-detect "gog" or "gogcli")
+	DefaultAccount string // Default --account value when not provided by caller
+	TimeoutSeconds int    // Default timeout in seconds (0 = 90)
+}
+
 type GoGCLITool struct {
-	timeout time.Duration
+	timeout        time.Duration
+	binary         string // resolved binary path; empty means auto-detect
+	defaultAccount string
 }
 
 func NewGoGCLITool() *GoGCLITool {
+	return NewGoGCLIToolWithConfig(GoGCLIConfig{})
+}
+
+func NewGoGCLIToolWithConfig(cfg GoGCLIConfig) *GoGCLITool {
+	timeout := 90 * time.Second
+	if cfg.TimeoutSeconds >= 5 {
+		timeout = time.Duration(cfg.TimeoutSeconds) * time.Second
+	}
 	return &GoGCLITool{
-		timeout: 90 * time.Second,
+		timeout:        timeout,
+		binary:         strings.TrimSpace(cfg.Binary),
+		defaultAccount: strings.TrimSpace(cfg.DefaultAccount),
 	}
 }
 
@@ -77,7 +98,7 @@ func (t *GoGCLITool) Parameters() map[string]interface{} {
 }
 
 func (t *GoGCLITool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
-	bin, err := resolveGoGBinary()
+	bin, err := t.resolveBinary()
 	if err != nil {
 		return "", err
 	}
@@ -125,9 +146,16 @@ func (t *GoGCLITool) Execute(ctx context.Context, args map[string]interface{}) (
 		}
 	}
 
+	// Apply --account: caller-provided > config default
 	if !hasAccountArg(argv) {
+		account := ""
 		if rawAccount, ok := args["account"].(string); ok && strings.TrimSpace(rawAccount) != "" {
-			argv = append(argv, "--account", strings.TrimSpace(rawAccount))
+			account = strings.TrimSpace(rawAccount)
+		} else if t.defaultAccount != "" {
+			account = t.defaultAccount
+		}
+		if account != "" {
+			argv = append(argv, "--account", account)
 		}
 	}
 
@@ -170,6 +198,21 @@ func (t *GoGCLITool) Execute(ctx context.Context, args map[string]interface{}) (
 	return truncateGogOutput(out), nil
 }
 
+// resolveBinary returns the gog binary to use.
+// If a binary was configured, it is used directly; otherwise auto-detect from PATH.
+func (t *GoGCLITool) resolveBinary() (string, error) {
+	if t.binary != "" {
+		return t.binary, nil
+	}
+	if p, err := exec.LookPath("gog"); err == nil && strings.TrimSpace(p) != "" {
+		return "gog", nil
+	}
+	if p, err := exec.LookPath("gogcli"); err == nil && strings.TrimSpace(p) != "" {
+		return "gogcli", nil
+	}
+	return "", fmt.Errorf("gog binary not found (expected 'gog' or 'gogcli' in PATH)")
+}
+
 func truncateGogOutput(s string) string {
 	if len(s) <= gogMaxOutputChars {
 		return s
@@ -197,16 +240,6 @@ func mergeOutput(out, errOut string) string {
 		return out
 	}
 	return out + "\n" + errOut
-}
-
-func resolveGoGBinary() (string, error) {
-	if p, err := exec.LookPath("gog"); err == nil && strings.TrimSpace(p) != "" {
-		return "gog", nil
-	}
-	if p, err := exec.LookPath("gogcli"); err == nil && strings.TrimSpace(p) != "" {
-		return "gogcli", nil
-	}
-	return "", fmt.Errorf("gog binary not found (expected 'gog' or 'gogcli' in PATH)")
 }
 
 func buildActionArgs(args map[string]interface{}) ([]string, error) {

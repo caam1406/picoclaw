@@ -82,9 +82,12 @@ func NewAgentLoopForAgent(cfg *config.Config, msgBus *bus.MessageBus, provider p
 	braveAPIKey := cfg.Tools.Web.Search.APIKey
 	toolsRegistry.Register(tools.NewWebSearchTool(braveAPIKey, cfg.Tools.Web.Search.MaxResults))
 	toolsRegistry.Register(tools.NewWebFetchTool(50000))
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("PICOCLAW_TOOLS_GOGCLI_ENABLED")), "true") ||
-		strings.TrimSpace(os.Getenv("PICOCLAW_TOOLS_GOGCLI_ENABLED")) == "1" {
-		toolsRegistry.Register(tools.NewGoGCLITool())
+	if cfg.Tools.GoGCLI.Enabled {
+		toolsRegistry.Register(tools.NewGoGCLIToolWithConfig(tools.GoGCLIConfig{
+			Binary:         cfg.Tools.GoGCLI.Binary,
+			DefaultAccount: cfg.Tools.GoGCLI.DefaultAccount,
+			TimeoutSeconds: cfg.Tools.GoGCLI.TimeoutSeconds,
+		}))
 	}
 
 	// Register message tool
